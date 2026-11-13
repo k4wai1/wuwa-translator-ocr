@@ -1,0 +1,25 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Python / ML
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+training/dataset/images/
+training/dataset/labels/
+training/runs/
+training/*.pt
+training/*.onnx
+*.cache
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/

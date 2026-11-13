@@ -1,0 +1,9 @@
+{
+  "imgsz": 416,
+  "inputName": "images",
+  "outputName": "output0",
+  "classes": 45,
+  "periodClass": "A",
+  "trainedAt": null,
+  "metrics": null
+}

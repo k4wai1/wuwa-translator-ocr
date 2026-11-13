@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0b0d12" />
+    <meta name="robots" content="index,follow" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <title>WuWa Translator OCR — Solaris-3 Alphabet Decoder</title>
+    <meta
+      name="description"
+      content="Escáner OCR 100% en el navegador para el alfabeto Solaris-3 de Wuthering Waves. WuWa Font Scanner, Solaris-3 Alphabet Decoder y traductor manual sincronizado."
+    />
+    <meta
+      name="keywords"
+      content="Wuthering Waves Translator, WuWa OCR, Solaris-3 Alphabet Decoder, WuWa Font Scanner, Solaris-3 Script"
+    />
+    <meta property="og:title" content="WuWa Translator OCR — Solaris-3 Alphabet Decoder" />
+    <meta
+      property="og:description"
+      content="Traduce capturas del alfabeto Solaris-3 de Wuthering Waves con IA que corre completamente en tu navegador."
+    />
+    <meta property="og:type" content="website" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%230b0d12'/%3E%3Cpath d='M25 30h50M25 50h38M25 70h50' stroke='%23d4b170' stroke-width='8' stroke-linecap='round'/%3E%3C/svg%3E" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "WuWa Translator OCR",
+        "alternateName": "Solaris-3 Alphabet Decoder",
+        "description": "Escáner OCR y traductor del alfabeto Solaris-3 de Wuthering Waves. La IA corre 100% en el navegador con ONNX Runtime Web.",
+        "applicationCategory": "UtilitiesApplication",
+        "operatingSystem": "Any",
+        "browserRequirements": "Requires JavaScript and WebAssembly",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "keywords": "Wuthering Waves Translator, WuWa OCR, Solaris-3 Alphabet Decoder, WuWa Font Scanner"
+      }
+    </script>
+    <script>
+      // Apply the stored theme before first paint to avoid a flash.
+      try {
+        var stored = localStorage.getItem("wuwa-ocr-theme");
+        document.documentElement.classList.toggle("dark", stored !== "light");
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>Este escáner necesita JavaScript y WebAssembly para ejecutar el modelo ONNX en tu navegador.</noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
