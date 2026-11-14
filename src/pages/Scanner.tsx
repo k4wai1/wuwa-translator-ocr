@@ -183,7 +183,17 @@ export function Scanner() {
     try {
       const bundle = await ensureModel();
       if (!bundle) return;
-      const input = processed ?? cropped;
+      let input = processed ?? cropped;
+      if (processed && cropped) {
+        const mean = (c: HTMLCanvasElement) => {
+          const d = c.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, c.width, c.height).data;
+          let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i];
+          return s / (d.length / 4);
+        };
+        const a = mean(cropped), b = mean(processed);
+        (window as unknown as Record<string, unknown>).__scanStats = { crop: a, proc: b };
+        if (b < 1 && a > 1) input = cropped;
+      }
       const res = await runOcr(
         input,
         { confidence, iou: 0.45, periodHeuristic, maxDetections: 400 },
