@@ -403,7 +403,6 @@ export async function runOcr(
     detections = nms(detections, 0.55, opts.maxDetections, false);
   }
 
-  (window as unknown as Record<string, unknown>).__ocrDebug = { w: canvas.width, h: canvas.height, raw: raw.length, kept: detections.length, stats: canvasStats(canvas) };
   const lines = reconstruct(detections, {
     periodHeuristic: opts.periodHeuristic,
     spaceFactor: 0.34,
@@ -532,12 +531,3 @@ async function runTiled(
   return all;
 }
 
-function canvasStats(c: HTMLCanvasElement) {
-  const d = c.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, c.width, c.height).data;
-  let s = 0, mn = 255, mx = 0;
-  for (let i = 0; i < d.length; i += 4) {
-    const v = (d[i] + d[i + 1] + d[i + 2]) / 3;
-    s += v; if (v < mn) mn = v; if (v > mx) mx = v;
-  }
-  return { mean: +(s / (d.length / 4)).toFixed(1), min: mn, max: mx };
-}
