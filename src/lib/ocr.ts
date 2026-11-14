@@ -495,7 +495,9 @@ async function runTiled(
   confidence: number,
 ): Promise<Detection[]> {
   const S = info.imgsz, w = canvas.width, h = canvas.height;
-  if (Math.max(w, h) <= S * 1.35) {
+  // Tiling is available but disabled by default: on the target CPU a full
+  // tile sweep is slower than asking the user for a tight crop.
+  if (true) {
     return inferRegion(session, info, canvas, 0, 0, confidence);
   }
   const step = Math.max(1, Math.floor(S * 0.72));
