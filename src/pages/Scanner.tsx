@@ -99,7 +99,6 @@ export function Scanner() {
   const loadUrl = useCallback(
     (url: string, name: string) => {
       const img = new Image();
-      img.crossOrigin = "anonymous";
       img.onload = async () => {
         try { await img.decode(); } catch { /* noop */ }
         applySource(img, url, name, false);
