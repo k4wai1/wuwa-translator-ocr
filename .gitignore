@@ -14,12 +14,20 @@ __pycache__/
 venv/
 training/dataset/images/
 training/dataset/labels/
+training/micro/images/
+training/micro/labels/
 training/runs/
+training/chargen/
+training/chargen_smoke/
 training/*.pt
 training/*.onnx
+training/*.log
 *.cache
 
 # Editor
 .vscode/*
 !.vscode/extensions.json
 .idea/
+*.pt
+runs/
+training/

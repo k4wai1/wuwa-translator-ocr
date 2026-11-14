@@ -34,7 +34,8 @@ export function KeyboardIcon(props: IconProps) {
 export function AlphabetIcon(props: IconProps) {
   return (
     <svg {...base(props)}>
-      <path d="M4 6h6M7 6v12M14 18l4-12 4 12M15.5 14h5" />
+      <path d="M5 19 11 5l6 14M7.5 14h7" />
+      <path d="M18 9v5M18 17h.01" opacity={0.8} />
     </svg>
   );
 }

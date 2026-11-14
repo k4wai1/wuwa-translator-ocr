@@ -9,8 +9,10 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
-    "assets:ort": "node scripts/copy-ort.mjs",
-    "postinstall": "node scripts/copy-ort.mjs"
+    "ml:dataset": "python3 scripts/generate_dataset.py",
+    "ml:micro": "python3 scripts/generate_dataset.py --profile micro --out training/micro --train 1800 --val 250",
+    "ml:train": "python3 scripts/train_chargen.py --epochs 30 --imgsz 192 --batch 16",
+    "ml:export": "python3 scripts/export_chargen.py"
   },
   "dependencies": {
     "onnxruntime-web": "^1.23.2",

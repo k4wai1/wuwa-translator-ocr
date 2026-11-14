@@ -35,6 +35,9 @@ export function Manual() {
   }, [text]);
 
   const append = (ch: string) => {
+    if (document.activeElement === editorRef.current) {
+      (document.activeElement as HTMLElement).blur();
+    }
     setText((t) => (t + ch).slice(0, 4000));
   };
 

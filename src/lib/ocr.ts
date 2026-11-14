@@ -1,4 +1,4 @@
-import * as ort from "onnxruntime-web";
+import * as ort from "onnxruntime-web/wasm";
 import meta from "./model-meta.json";
 import { CLASSES } from "./classes";
 import { reconstruct } from "./reconstruct";
@@ -24,18 +24,27 @@ export interface ModelInfo {
   backend: string;
   inputName: string;
   outputName: string;
+  arch: string;
+  stride: number;
+  numClasses: number;
 }
 
 export type SessionBundle = { session: ort.InferenceSession; info: ModelInfo };
 
+export interface ClassifierBundle {
+  session: ort.InferenceSession;
+  imgsz: number;
+  inputName: string;
+  outputName: string;
+}
+
 let sessionPromise: Promise<{ session: ort.InferenceSession; info: ModelInfo }> | null = null;
+let classifierPromise: Promise<ClassifierBundle | null> | null = null;
 
 ort.env.wasm.numThreads = 1;
 ort.env.wasm.simd = true;
 ort.env.wasm.proxy = false;
 ort.env.logLevel = "error";
-// Served from public/ort via scripts/copy-ort.mjs (no CDN, works offline).
-ort.env.wasm.wasmPaths = `${import.meta.env.BASE_URL}ort/`;
 
 export function modelUrl(): string {
   return `${import.meta.env.BASE_URL}models/model.onnx`;
@@ -82,11 +91,14 @@ export async function loadModel(
       executionMode: "sequential",
     });
     const info: ModelInfo = {
-      imgsz: (meta.imgsz as number) || 416,
+      imgsz: (meta.imgsz as number) || 192,
       bytes: buffer.byteLength,
       backend: "wasm",
       inputName: session.inputNames[0],
       outputName: session.outputNames[0],
+      arch: (meta.arch as string) || "chargen",
+      stride: (meta.stride as number) || 4,
+      numClasses: (meta.numClasses as number) || CLASSES.length,
     };
     return { session, info };
   })().catch((err) => {
@@ -98,6 +110,29 @@ export async function loadModel(
 
 export function resetModelCache(): void {
   sessionPromise = null;
+  classifierPromise = null;
+}
+
+/** Optional second-stage glyph classifier (trained on clean GT crops). */
+export async function loadClassifier(): Promise<ClassifierBundle | null> {
+  if (classifierPromise) return classifierPromise;
+  classifierPromise = (async () => {
+    const cfg = (meta as { classifier?: { imgsz?: number; inputName?: string; outputName?: string } })
+      .classifier;
+    const res = await fetch(`${import.meta.env.BASE_URL}models/classifier.onnx`, { cache: "force-cache" });
+    if (!res.ok) return null;
+    const session = await ort.InferenceSession.create(await res.arrayBuffer(), {
+      executionProviders: ["wasm"],
+      graphOptimizationLevel: "all",
+    });
+    return {
+      session,
+      imgsz: cfg?.imgsz ?? 24,
+      inputName: session.inputNames[0],
+      outputName: session.outputNames[0],
+    };
+  })().catch(() => null);
+  return classifierPromise;
 }
 
 function letterbox(src: HTMLCanvasElement, size: number): {
@@ -148,13 +183,13 @@ function iou(a: Detection, b: Detection): number {
   return inter / (areaA + areaB - inter);
 }
 
-function nms(dets: Detection[], iouThreshold: number, maxDetections: number): Detection[] {
+function nms(dets: Detection[], iouThreshold: number, maxDetections: number, classAware = true): Detection[] {
   const sorted = [...dets].sort((a, b) => b.confidence - a.confidence);
   const keep: Detection[] = [];
   for (const d of sorted) {
     let ok = true;
     for (const k of keep) {
-      if (k.cls === d.cls && iou(k, d) > iouThreshold) {
+      if ((!classAware || k.cls === d.cls) && iou(k, d) > iouThreshold) {
         ok = false;
         break;
       }
@@ -167,7 +202,7 @@ function nms(dets: Detection[], iouThreshold: number, maxDetections: number): De
   return keep;
 }
 
-function decode(
+function decodeYolo(
   output: ort.Tensor,
   origW: number,
   origH: number,
@@ -253,7 +288,105 @@ function decode(
   return dets;
 }
 
-/** Run the YOLO detector over an already-preprocessed crop canvas. */
+/**
+ * Decode the lightweight SolarisCharNet output:
+ * [1, 1 + 45 + 4, H, W] with objectness, class logits and box regression.
+ */
+function decodeChargen(
+  output: ort.Tensor,
+  origW: number,
+  origH: number,
+  scale: number,
+  padX: number,
+  padY: number,
+  confidence: number,
+  stride: number,
+): Detection[] {
+  const dims = output.dims as number[];
+  if (dims.length !== 4) throw new Error(`Salida chargen inesperada: [${dims.join(", ")}]`);
+  const [, channels, gh, gw] = dims;
+  const data = output.data as Float32Array;
+  const numClasses = channels - 1 - 4;
+  const hw = gh * gw;
+  const heat = new Float32Array(hw);
+  for (let i = 0; i < hw; i++) {
+    heat[i] = 1 / (1 + Math.exp(-data[i]));
+  }
+  const dets: Detection[] = [];
+  const at = (c: number, i: number) => data[c * hw + i];
+
+  for (let gy = 0; gy < gh; gy++) {
+    for (let gx = 0; gx < gw; gx++) {
+      const idx = gy * gw + gx;
+      const p = heat[idx];
+      if (p < confidence) continue;
+      // 3x3 local-maximum check (equivalent to the Python decode).
+      let peak = true;
+      for (let dy = -1; dy <= 1 && peak; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          const ny = gy + dy;
+          const nx = gx + dx;
+          if (ny < 0 || ny >= gh || nx < 0 || nx >= gw) continue;
+          if (heat[ny * gw + nx] > p) {
+            peak = false;
+            break;
+          }
+        }
+      }
+      if (!peak) continue;
+
+      let bestCls = 0;
+      let bestLogit = -Infinity;
+      let maxLogit = -Infinity;
+      for (let k = 0; k < numClasses; k++) {
+        const v = at(1 + k, idx);
+        if (v > bestLogit) {
+          bestLogit = v;
+          bestCls = k;
+        }
+        if (v > maxLogit) maxLogit = v;
+      }
+      let sum = 0;
+      for (let k = 0; k < numClasses; k++) sum += Math.exp(at(1 + k, idx) - maxLogit);
+      const clsProb = Math.exp(bestLogit - maxLogit) / Math.max(1e-9, sum);
+      const score = p * clsProb;
+      if (score < confidence) continue;
+
+      const dx = at(1 + numClasses, idx);
+      const dy = at(2 + numClasses, idx);
+      const logw = at(3 + numClasses, idx);
+      const logh = at(4 + numClasses, idx);
+      const cxL = (gx + 0.5 + dx) * stride;
+      const cyL = (gy + 0.5 + dy) * stride;
+      const bw = Math.exp(Math.max(-3, Math.min(3.5, logw))) * stride;
+      const bh = Math.exp(Math.max(-3, Math.min(3.5, logh))) * stride;
+
+      const x0 = (cxL - bw / 2 - padX) / scale;
+      const y0 = (cyL - bh / 2 - padY) / scale;
+      const x1 = (cxL + bw / 2 - padX) / scale;
+      const y1 = (cyL + bh / 2 - padY) / scale;
+      if (x1 < 0 || y1 < 0 || x0 > origW || y0 > origH) continue;
+      const cx0 = Math.max(0, x0);
+      const cy0 = Math.max(0, y0);
+      const cx1 = Math.min(origW - 1, x1);
+      const cy1 = Math.min(origH - 1, y1);
+      if (cx1 - cx0 < 2 || cy1 - cy0 < 2) continue;
+      dets.push({
+        cls: bestCls,
+        letter: CLASSES[bestCls],
+        confidence: score,
+        x0: cx0,
+        y0: cy0,
+        x1: cx1,
+        y1: cy1,
+      });
+    }
+  }
+  return dets;
+}
+
+/** Run the detector over an already-preprocessed crop canvas. */
 export async function runOcr(
   canvas: HTMLCanvasElement,
   opts: OcrOptions = DEFAULT_OCR,
@@ -266,8 +399,14 @@ export async function runOcr(
   const feeds: Record<string, ort.Tensor> = { [info.inputName]: tensor };
   const results = await session.run(feeds);
   const output = results[info.outputName];
-  const raw = decode(output, canvas.width, canvas.height, scale, padX, padY, opts.confidence);
+  const dims = output.dims as number[];
+  const isChargen = dims.length === 4 && dims[1] === 1 + CLASSES.length + 4;
+  const raw = isChargen
+    ? decodeChargen(output, canvas.width, canvas.height, scale, padX, padY, opts.confidence, info.stride)
+    : decodeYolo(output, canvas.width, canvas.height, scale, padX, padY, opts.confidence);
   const detections = nms(raw, opts.iou, opts.maxDetections);
+  const classifier = await loadClassifier();
+  if (classifier) await classifyDetections(canvas, detections, classifier);
 
   const lines = reconstruct(detections, {
     periodHeuristic: opts.periodHeuristic,
@@ -283,4 +422,54 @@ export async function runOcr(
     height: canvas.height,
     tookMs: performance.now() - started,
   };
+}
+
+/** Refine detector classes using the second-stage glyph classifier. */
+async function classifyDetections(
+  canvas: HTMLCanvasElement,
+  dets: Detection[],
+  clf: ClassifierBundle,
+): Promise<void> {
+  if (!dets.length) return;
+  const S = clf.imgsz;
+  const n = dets.length;
+  const data = new Float32Array(n * 3 * S * S);
+  const tmp = document.createElement("canvas");
+  tmp.width = S;
+  tmp.height = S;
+  const ctx = tmp.getContext("2d", { willReadFrequently: true })!;
+  for (let i = 0; i < n; i++) {
+    const d = dets[i];
+    const bw = Math.max(1, d.x1 - d.x0);
+    const bh = Math.max(1, d.y1 - d.y0);
+    const mx = bw * 0.12;
+    const my = bh * 0.12;
+    const x0 = Math.max(0, d.x0 - mx);
+    const y0 = Math.max(0, d.y0 - my);
+    const x1 = Math.min(canvas.width, d.x1 + mx);
+    const y1 = Math.min(canvas.height, d.y1 + my);
+    ctx.clearRect(0, 0, S, S);
+    ctx.drawImage(canvas, x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0), 0, 0, S, S);
+    const px = ctx.getImageData(0, 0, S, S).data;
+    const base = i * S * S;
+    for (let j = 0; j < S * S; j++) {
+      data[base + j] = px[j * 4] / 255;
+      data[n * S * S + base + j] = px[j * 4 + 1] / 255;
+      data[2 * n * S * S + base + j] = px[j * 4 + 2] / 255;
+    }
+  }
+  const tensor = new ort.Tensor("float32", data, [n, 3, S, S]);
+  const out = (await clf.session.run({ [clf.inputName]: tensor }))[clf.outputName];
+  const nc = out.dims[1] as number;
+  const logits = out.data as Float32Array;
+  for (let i = 0; i < n; i++) {
+    let best = 0;
+    let max = -Infinity;
+    for (let k = 0; k < nc; k++) {
+      const v = logits[i * nc + k];
+      if (v > max) { max = v; best = k; }
+    }
+    dets[i].cls = best;
+    dets[i].letter = CLASSES[best] ?? "?";
+  }
 }

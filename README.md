@@ -28,7 +28,8 @@ Aplicación web **100% client-side** para escanear y traducir el alfabeto **Sola
 | --- | --- |
 | Web | Vite 8 + React 19 + TypeScript + TailwindCSS 4 |
 | Router | `HashRouter` (compatible con GitHub Pages) |
-| IA | Ultralytics YOLOv8n → ONNX + ONNX Runtime Web (WASM) |
+| IA | SolarisCharNet (CNN detector ligero) → ONNX + ONNX Runtime Web (WASM) |
+| Alternativa | YOLOv8n (`scripts/train_yolo.py`) para hardware con GPU |
 | Dataset | Python + Pillow + OpenCV + NumPy (síntesis con la fuente oficial) |
 | Paquetes | **pnpm** exclusivamente |
 
@@ -50,16 +51,45 @@ La fuente oficial `Solaris-3 Script.ttf` se usa para renderizar textos de UI/lor
 fondos procedurales con **bajo contraste, gradientes, perspectiva, rotación, desenfoque,
 ruido, glow y umbral adaptativo**, generando cajas YOLO exactas por carácter.
 
+El modelo que se distribuye por defecto es **SolarisCharNet**, un detector CNN
+anchor-free de ~21 k parámetros (heatmap de centros a stride 4 + 45 clases + regresión de
+caja). Se eligió tras medir el hardware: un Celeron de 2 núcleos sin AVX tarda ~12 s por
+lote con YOLOv8n a 320 px, mientras que SolarisCharNet entrena ~10× más rápido y produce
+un ONNX de ~100 KB que infiere en el navegador en decenas de milisegundos.
+
 ```bash
-# 1. Dataset sintético (2.400 train / 400 val por defecto)
-python3 scripts/generate_dataset.py
+# 1. Dataset sintético (YOLO, hardware con GPU)
+python3 scripts/generate_dataset.py --train 2400 --val 400
 
-# 2. Entrenamiento (CPU-friendly)
+# 2A. Modelo ligero que se despliega (CPU)
+python3 scripts/generate_dataset.py --profile micro --out training/micro --train 1800 --val 250
+python3 scripts/train_chargen.py --epochs 30 --imgsz 192 --batch 16
+python3 scripts/export_chargen.py
+
+# 2A-bis. Clasificador de glifos de segunda etapa
+python3 scripts/train_classifier.py --epochs 18
+cp training/classifier/classifier.onnx public/models/
+
+# 2B. Alternativa YOLOv8n para hardware con GPU
 python3 scripts/train_yolo.py --epochs 45 --imgsz 416 --batch 8
-
-# 3. Exportación ONNX + cuantización + validación + copia a public/models
 python3 scripts/export_onnx.py
 ```
+
+> En un equipo sin AVX/GPU el entrenamiento completo de YOLOv8n lleva días. Los scripts
+> YOLO se conservan para reproducir el pipeline en una máquina con GPU; el modelo
+> desplegado y validado aquí es SolarisCharNet.
+
+### Resultados del modelo incluido
+
+| Etapa | Métrica |
+| --- | --- |
+| Detector (época 18, detenido por CPU) | mAP50 **0.3008** |
+| Clasificador de glifos (2.ª etapa) | accuracy **0.7939** |
+| Pipeline completo (150 val) | mAP50 **0.2931** · recall@0.5 **0.5089** |
+| Tamaño | detector 85 KB + clasificador 311 KB |
+
+El mAP seguía mejorando al detener el entrenamiento; con GPU o más épocas puede subir.
+El teclado visual del traductor manual permite corregir glifos dudosos.
 
 ### Clases (45)
 
@@ -76,12 +106,14 @@ python3 scripts/export_onnx.py
 │   ├── examples/            Capturas reales y frames de livestream
 │   ├── fonts/               Solaris-3-Script.ttf
 │   ├── models/              model.onnx (generado)
-│   └── ort/                 Runtime WASM de ONNX Runtime
+│   └── ...                  capturas y fuente
 ├── scripts/
 │   ├── generate_dataset.py
-│   ├── train_yolo.py
-│   ├── export_onnx.py
-│   └── copy-ort.mjs
+│   ├── train_chargen.py     Entrenamiento del modelo desplegado
+│   ├── export_chargen.py    Exportación ONNX + validación + instalación
+│   ├── chargen.py           Modelo, dataset y decodificación compartidos
+│   ├── train_yolo.py        Alternativa YOLOv8n (GPU)
+│   └── export_onnx.py
 ├── src/
 │   ├── components/          UI (Cropper, FilterPanel, ScanResult…)
 │   ├── lib/                 OCR, preprocesado, reconstrucción, glifos

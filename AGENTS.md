@@ -39,3 +39,10 @@ A B C D E F G H I J K L M N O P Q R S T U V W X Y Z
 ```
 
 Este orden es compartido por `scripts/generate_dataset.py` y `src/lib/classes.ts`.
+
+## Modelo desplegado
+
+El hardware de entrenamiento es un Celeron sin AVX; YOLOv8n tarda ~12 s por lote y hace
+inviable un entrenamiento completo. El modelo que se despliega es **SolarisCharNet**
+(CNN densa anchor-free, ~21 k parámetros, salida `[1, 50, 48, 48]`, stride 4). Los scripts
+YOLO permanecen como alternativa para hardware con GPU. Ver `PROGRESS_LOG.md`.

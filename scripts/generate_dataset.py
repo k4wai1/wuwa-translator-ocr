@@ -94,6 +94,26 @@ CORPUS = [
 
 GLYPHS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789()-,/:;[]"
 
+PROFILES = {
+    "default": {
+        "font": (0.055, 0.105),
+        "margin": (0.08, 0.16),
+        "line_weights": (0.25, 0.45, 0.30),
+        "angle": 25.0,
+        "angle_soft": 13.0,
+    },
+    # Small square crops with large glyphs, tailored to the lightweight
+    # 192 px detector that trains on CPU-only hardware.
+    "micro": {
+        "font": (0.12, 0.22),
+        "margin": (0.05, 0.10),
+        "line_weights": (0.30, 0.45, 0.25),
+        "angle": 15.0,
+        "angle_soft": 8.0,
+    },
+}
+PROFILE = PROFILES["default"]
+
 
 @dataclass
 class CharBox:
@@ -219,15 +239,15 @@ def render_scene(rng: random.Random, w: int, h: int, font_path: Path):
     bg, bg_mean, dark_bg = make_background(rng, h, w)
     img = Image.fromarray(cv2.cvtColor(bg, cv2.COLOR_BGR2RGB)).convert("RGBA")
 
-    margin_x = int(w * rng.uniform(0.08, 0.16))
-    margin_y = int(h * rng.uniform(0.10, 0.20))
+    margin_x = int(w * rng.uniform(*PROFILE["margin"]))
+    margin_y = int(h * rng.uniform(*PROFILE["margin"]))
     avail_w = w - 2 * margin_x
     avail_h = h - 2 * margin_y
 
-    n_lines = rng.choices([1, 2, 3], weights=[0.25, 0.45, 0.30])[0]
+    n_lines = rng.choices([1, 2, 3], weights=PROFILE["line_weights"])[0]
     low_contrast = rng.random() < 0.45
-    size = int(min(h, w) * rng.uniform(0.055, 0.105))
-    size = max(28, min(size, 84))
+    size = int(min(h, w) * rng.uniform(*PROFILE["font"]))
+    size = max(18, min(size, 92))
     line_gap = rng.uniform(1.35, 1.9)
     total_h = n_lines * size * line_gap
     if total_h > avail_h:
@@ -332,9 +352,9 @@ def render_scene(rng: random.Random, w: int, h: int, font_path: Path):
     scene = cv2.cvtColor(np.array(img.convert("RGB")), cv2.COLOR_RGB2BGR)
 
     # Global geometric transform: rotation + perspective + gentle scale.
-    angle = rng.uniform(-25, 25)
+    angle = rng.uniform(-PROFILE["angle"], PROFILE["angle"])
     if rng.random() < 0.7:
-        angle = rng.uniform(-13, 13)
+        angle = rng.uniform(-PROFILE["angle_soft"], PROFILE["angle_soft"])
     jitter = rng.uniform(0.0, 0.06)
     src = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
     dst = np.float32([
@@ -463,7 +483,11 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=20261113)
     ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--preview", type=int, default=0, help="Generate only N preview images in ./preview")
+    ap.add_argument("--profile", choices=sorted(PROFILES), default="default")
     args = ap.parse_args()
+
+    global PROFILE
+    PROFILE = PROFILES[args.profile]
 
     out = Path(args.out)
     for split in ("train", "val"):
@@ -471,6 +495,8 @@ def main() -> None:
         (out / "labels" / split).mkdir(parents=True, exist_ok=True)
 
     sizes = [(640, 640), (768, 512), (512, 768), (896, 512), (640, 384), (704, 704)]
+    if args.profile == "micro":
+        sizes = [(192, 192)]
 
     jobs = []
     for i in range(args.train):
@@ -498,7 +524,7 @@ def main() -> None:
 
     names = CLASSES
     (out / "data.yaml").write_text(
-        "path: .\ntrain: images/train\nval: images/val\nnames:\n"
+        f"path: {out.resolve()}\ntrain: images/train\nval: images/val\nnames:\n"
         + "\n".join(f"  {i}: {name!r}" for i, name in enumerate(names))
         + "\n"
     )

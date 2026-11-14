@@ -1,9 +1,26 @@
 {
-  "imgsz": 416,
+  "arch": "chargen",
+  "imgsz": 192,
+  "stride": 4,
+  "numClasses": 45,
+  "width": 48,
   "inputName": "images",
   "outputName": "output0",
-  "classes": 45,
   "periodClass": "A",
-  "trainedAt": null,
-  "metrics": null
+  "trainedAt": "2026-11-14T04:08:00Z",
+  "sizeKB": 85.0,
+  "metrics": {
+    "detector_mAP50": 0.3008,
+    "pipeline_mAP50": 0.2931,
+    "pipeline_recall50": 0.5089,
+    "classifier_val_acc": 0.7939,
+    "eval_images": 150,
+    "note": "Entrenamiento detenido en época 18 por presupuesto de CPU; el mAP seguía subiendo."
+  },
+  "classifier": {
+    "imgsz": 24,
+    "inputName": "images",
+    "outputName": "logits",
+    "valAcc": 0.7939
+  }
 }

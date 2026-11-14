@@ -301,7 +301,7 @@ export function Scanner() {
 
               <div className="mt-4 border-t border-line/70 pt-3">
                 <p className="label mb-2">O prueba con una captura real</p>
-                <div className="scroll-x flex gap-2 overflow-x-auto pb-1">
+                <div className="scroll-x mt-2 flex min-w-0 gap-2 overflow-x-auto pb-1">
                   {EXAMPLE_IMAGES.filter((e) => e.tag !== "livestream")
                     .slice(0, 5)
                     .map((ex) => (
@@ -508,8 +508,8 @@ function Hero({ onStart }: { onStart: () => void }) {
         </h1>
         <p className="mt-4 max-w-2xl text-sm leading-relaxed text-muted sm:text-base">
           Sube una captura, pega con <kbd className="rounded border border-line bg-surface px-1.5 py-0.5 text-[0.7rem]">Ctrl+V</kbd>{" "}
-          o usa una imagen de ejemplo. El detector YOLOv8n corre en tu navegador: recorta, realza el
-          contraste y obtén la transcripción sin subir nada a ningún servidor.
+          o usa una imagen de ejemplo. Un detector CNN ligero (ONNX) corre en tu navegador:
+          recorta, realza el contraste y obtén la transcripción sin subir nada a ningún servidor.
         </p>
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <button type="button" className="btn btn-gold h-11 px-5" onClick={onStart}>
@@ -710,9 +710,9 @@ function ModelMissing() {
         Entrena el detector y cópialo:
       </p>
       <pre className="mt-2 overflow-x-auto rounded bg-bg/70 p-2 text-[0.68rem] text-cyan">
-{`python scripts/generate_dataset.py
-python scripts/train_yolo.py
-python scripts/export_onnx.py`}
+{`python scripts/generate_dataset.py --profile micro --out training/micro
+python scripts/train_chargen.py
+python scripts/export_chargen.py`}
       </pre>
     </div>
   );
