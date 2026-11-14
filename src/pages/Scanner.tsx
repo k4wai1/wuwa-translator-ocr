@@ -83,7 +83,10 @@ export function Scanner() {
       }
       const url = URL.createObjectURL(file);
       const img = new Image();
-      img.onload = () => applySource(img, url, file.name || "captura", true);
+      img.onload = async () => {
+        try { await img.decode(); } catch { /* noop */ }
+        applySource(img, url, file.name || "captura", true);
+      };
       img.onerror = () => {
         URL.revokeObjectURL(url);
         notify("No se pudo leer la imagen.");
@@ -97,7 +100,10 @@ export function Scanner() {
     (url: string, name: string) => {
       const img = new Image();
       img.crossOrigin = "anonymous";
-      img.onload = () => applySource(img, url, name, false);
+      img.onload = async () => {
+        try { await img.decode(); } catch { /* noop */ }
+        applySource(img, url, name, false);
+      };
       img.onerror = () => notify("No se pudo cargar la imagen de ejemplo.");
       img.src = url;
     },
