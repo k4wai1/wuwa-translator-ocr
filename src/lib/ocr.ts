@@ -403,6 +403,7 @@ export async function runOcr(
     detections = nms(detections, 0.55, opts.maxDetections, false);
   }
 
+  console.info("[ocr]", canvas.width, canvas.height, "raw", raw.length, "kept", detections.length);
   const lines = reconstruct(detections, {
     periodHeuristic: opts.periodHeuristic,
     spaceFactor: 0.34,
