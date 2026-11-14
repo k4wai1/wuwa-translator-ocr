@@ -82,3 +82,9 @@ lenta para convoluciones modernas.
   modelos ONNX servidos desde `public/models`.
 - `HashRouter` + base `/wuwa-translator-ocr/` para GitHub Pages; workflow de Actions listo.
 - Repositorio preparado con commits atómicos y documentación (`README.md`, `AGENTS.md`).
+- Demo pública desplegada: https://k4wai1.github.io/wuwa-translator-ocr/
+- Se añadieron dos muestras sintéticas (`demo-cafe.jpg`, `demo-light.jpg`) generadas con la
+  fuente oficial para probar el escáner sin depender de una captura externa.
+- Validación del pipeline completa en Python: detector + clasificador + NMS. La lectura
+  sobre las muestras sintéticas recupera los glifos principales; las capturas reales
+  requieren recorte ajustado y contraste.

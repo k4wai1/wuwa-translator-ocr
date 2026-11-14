@@ -93,6 +93,14 @@ python3 scripts/export_onnx.py
 El mAP seguía mejorando al detener el entrenamiento; con GPU o más épocas puede subir.
 El teclado visual del traductor manual permite corregir glifos dudosos.
 
+### Limitaciones y siguientes pasos
+
+- El detector se entrenó solo con datos sintéticos; en capturas reales conviene recortar
+  muy cerca de la línea de texto y usar **Auto-mejorar** o **Umbral**.
+- El pipeline es un prototipo funcional (mAP50 ≈ 0.29), no un OCR de producción.
+- Siguientes pasos: más épocas/GPU, etiquetado de capturas reales, tiling optimizado para
+  recortes grandes y un modelo de lenguaje que corrija la reconstrucción.
+
 ### Clases (45)
 
 - **Letras (26):** `A-Z` (minúsculas comparten glifo).
