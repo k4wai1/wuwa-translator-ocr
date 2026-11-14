@@ -395,9 +395,13 @@ export async function runOcr(
   const started = performance.now();
   const { session, info } = sessionBundle ?? (await loadModel());
   const raw = await runTiled(session, info, canvas, opts.confidence);
-  const detections = nms(raw, opts.iou, opts.maxDetections, false);
+  let detections = nms(raw, opts.iou, opts.maxDetections, false);
   const classifier = await loadClassifier();
-  if (classifier) await classifyDetections(canvas, detections, classifier);
+  if (classifier) {
+    await classifyDetections(canvas, detections, classifier);
+    // Refining classes can leave overlapping duplicates; drop them.
+    detections = nms(detections, 0.55, opts.maxDetections, false);
+  }
 
   const lines = reconstruct(detections, {
     periodHeuristic: opts.periodHeuristic,

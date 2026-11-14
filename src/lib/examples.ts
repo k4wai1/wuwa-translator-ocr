@@ -10,6 +10,20 @@ export interface ExampleImage {
 
 export const EXAMPLE_IMAGES: ExampleImage[] = [
   {
+    id: "demo-cafe",
+    src: `${BASE}examples/demo-cafe.jpg`,
+    title: "Demo sintética · CAFE TEA",
+    note: "Imagen generada con la fuente oficial: ideal para probar el escáner.",
+    tag: "captura",
+  },
+  {
+    id: "demo-light",
+    src: `${BASE}examples/demo-light.jpg`,
+    title: "Demo sintética · SOLARIS 3",
+    note: "Prueba en fondo claro para el pre-procesado.",
+    tag: "captura",
+  },
+  {
     id: "decoding",
     src: `${BASE}examples/decoding.jpg`,
     title: "Cartel CAFE / TEA",
