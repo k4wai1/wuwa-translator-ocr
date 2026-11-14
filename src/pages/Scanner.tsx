@@ -188,6 +188,7 @@ export function Scanner() {
     try {
       const bundle = await ensureModel();
       if (!bundle) return;
+      (window as unknown as Record<string, unknown>).__imgInfo = source ? { nw: source.img.naturalWidth, nh: source.img.naturalHeight, complete: source.img.complete } : null;
       let input = processed ?? cropped;
       if (processed && cropped) {
         const mean = (c: HTMLCanvasElement) => {
