@@ -9,6 +9,7 @@ export interface OcrOptions {
   iou: number;
   periodHeuristic: boolean;
   maxDetections: number;
+  scale?: number;
 }
 
 export const DEFAULT_OCR: OcrOptions = {
@@ -16,6 +17,7 @@ export const DEFAULT_OCR: OcrOptions = {
   iou: 0.45,
   periodHeuristic: true,
   maxDetections: 350,
+  scale: 1,
 };
 
 export interface ModelInfo {
@@ -150,7 +152,13 @@ function letterbox(src: HTMLCanvasElement, size: number): {
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
-  ctx.fillStyle = "rgb(114,114,114)";
+  const sctx = src.getContext("2d", { willReadFrequently: true })!;
+  let ar = 0, ag = 0, ab = 0;
+  for (const [x, y] of [[0, 0], [src.width - 1, 0], [0, src.height - 1], [src.width - 1, src.height - 1]]) {
+    const d = sctx.getImageData(x, y, 1, 1).data;
+    ar += d[0]; ag += d[1]; ab += d[2];
+  }
+  ctx.fillStyle = `rgb(${Math.round(ar / 4)},${Math.round(ag / 4)},${Math.round(ab / 4)})`;
   ctx.fillRect(0, 0, size, size);
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(src, 0, 0, src.width, src.height, padX, padY, w, h);
@@ -351,7 +359,6 @@ function decodeChargen(
       for (let k = 0; k < numClasses; k++) sum += Math.exp(at(1 + k, idx) - maxLogit);
       const clsProb = Math.exp(bestLogit - maxLogit) / Math.max(1e-9, sum);
       const score = p * clsProb;
-      if (score < confidence) continue;
 
       const dx = at(1 + numClasses, idx);
       const dy = at(2 + numClasses, idx);
@@ -394,15 +401,30 @@ export async function runOcr(
 ): Promise<OcrResult> {
   const started = performance.now();
   const { session, info } = sessionBundle ?? (await loadModel());
-  const raw = await runTiled(session, info, canvas, opts.confidence);
-  let detections = nms(raw, opts.iou, opts.maxDetections, false);
+  const up = Math.max(1, Math.min(3, opts.scale ?? 1));
+  let work = canvas;
+  if (up > 1) {
+    work = document.createElement("canvas");
+    work.width = Math.round(canvas.width * up);
+    work.height = Math.round(canvas.height * up);
+    const wc = work.getContext("2d")!;
+    wc.imageSmoothingQuality = "high";
+    wc.drawImage(canvas, 0, 0, work.width, work.height);
+  }
+  const raw = await runTiled(session, info, work, opts.confidence);
+  const tiled = Math.max(canvas.width, canvas.height) > info.imgsz * 1.35;
+  let detections = nms(raw, opts.iou, opts.maxDetections, !tiled);
   const classifier = await loadClassifier();
   if (classifier) {
-    await classifyDetections(canvas, detections, classifier);
+    detections = await classifyDetections(work, detections, classifier);
     // Refining classes can leave overlapping duplicates; drop them.
-    detections = nms(detections, 0.55, opts.maxDetections, false);
+    detections = nms(detections, 0.55, opts.maxDetections, !tiled);
   }
-
+  if (up !== 1) {
+    for (const d of detections) {
+      d.x0 /= up; d.x1 /= up; d.y0 /= up; d.y1 /= up;
+    }
+  }
   const lines = reconstruct(detections, {
     periodHeuristic: opts.periodHeuristic,
     spaceFactor: 0.34,
@@ -424,8 +446,8 @@ async function classifyDetections(
   canvas: HTMLCanvasElement,
   dets: Detection[],
   clf: ClassifierBundle,
-): Promise<void> {
-  if (!dets.length) return;
+): Promise<Detection[]> {
+  if (!dets.length) return [];
   const S = clf.imgsz;
   const n = dets.length;
   const data = new Float32Array(n * 3 * S * S);
@@ -457,6 +479,7 @@ async function classifyDetections(
   const out = (await clf.session.run({ [clf.inputName]: tensor }))[clf.outputName];
   const nc = out.dims[1] as number;
   const logits = out.data as Float32Array;
+  const keep: Detection[] = [];
   for (let i = 0; i < n; i++) {
     let best = 0;
     let max = -Infinity;
@@ -464,9 +487,17 @@ async function classifyDetections(
       const v = logits[i * nc + k];
       if (v > max) { max = v; best = k; }
     }
+    let sum = 0;
+    for (let k = 0; k < nc; k++) sum += Math.exp(logits[i * nc + k] - max);
+    const prob = Math.exp(logits[i * nc + best] - max) / Math.max(1e-9, sum);
+    if (best >= CLASSES.length) continue;
     dets[i].cls = best;
     dets[i].letter = CLASSES[best] ?? "?";
+    // Fuse detector and classifier confidence; icon fragments get rejected.
+    dets[i].confidence = Math.sqrt(Math.max(0, dets[i].confidence * prob));
+    keep.push(dets[i]);
   }
+  return keep;
 }
 
 async function inferRegion(
@@ -499,9 +530,8 @@ async function runTiled(
   confidence: number,
 ): Promise<Detection[]> {
   const S = info.imgsz, w = canvas.width, h = canvas.height;
-  // Tiling is available but disabled by default: on the target CPU a full
-  // tile sweep is slower than asking the user for a tight crop.
-  if (true) {
+  // Small crops go straight through; large ones are tiled (max 24 tiles).
+  if (Math.max(w, h) <= S * 1.35) {
     return inferRegion(session, info, canvas, 0, 0, confidence);
   }
   const step = Math.max(1, Math.floor(S * 0.72));
@@ -516,6 +546,7 @@ async function runTiled(
     ys.push(v);
     if (v + S >= h) break;
   }
+  if (xs.length * ys.length > 24) return inferRegion(session, info, canvas, 0, 0, confidence);
   const all: Detection[] = [];
   const tw = Math.min(S, w), th = Math.min(S, h);
   const tile = document.createElement("canvas");

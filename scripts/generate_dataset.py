@@ -186,6 +186,20 @@ def make_background(rng: random.Random, h: int, w: int) -> tuple[np.ndarray, tup
             cv2.rectangle(overlay, (x0, y0), (x0 + pw, y0 + ph), col.tolist(), -1)
         overlay = cv2.GaussianBlur(overlay, (0, 0), rng.uniform(8, 28))
         bg = bg * 0.8 + overlay * rng.uniform(0.08, 0.25)
+        # Crisp UI frames / button borders (negative samples for the detector).
+        for _ in range(rng.randint(2, 4)):
+            x0, y0 = rng.randint(0, w // 2), rng.randint(0, h // 2)
+            x1, y1 = x0 + rng.randint(w // 5, w // 2), y0 + rng.randint(h // 6, h // 2)
+            x1, y1 = min(w - 1, x1), min(h - 1, y1)
+            fcol = tuple(int(v) for v in np.clip(np.array(pal[2]) * rng.uniform(.45, .9), 0, 255))
+            cv2.rectangle(bg, (x0, y0), (x1, y1), fcol, rng.choice([1, 2, 3]))
+            if rng.random() < 0.5:
+                mx = (x0 + x1) // 2
+                cv2.line(bg, (mx, y0), (mx, y1), fcol, 1)
+            if rng.random() < 0.4:
+                cv2.circle(bg, (x0 + 18, y0 + 18), rng.randint(8, 18), fcol, 2)
+        if rng.random() < 0.6:
+            cv2.rectangle(bg, (w // 12, h // 8), (w * 11 // 12, h * 7 // 8), fcol, 2)
     else:  # bright parchment photo
         bg = gradient_bg(h, w, c0, c1, rng.uniform(0, math.tau))
         bg += np.random.default_rng(rng.randrange(1 << 30)).normal(0, 6, bg.shape)
@@ -200,7 +214,7 @@ def make_background(rng: random.Random, h: int, w: int) -> tuple[np.ndarray, tup
 def pick_text_color(rng: random.Random, bg_mean, dark_bg: bool, low_contrast: bool):
     bg = np.array(bg_mean, np.float32)
     if low_contrast:
-        delta = rng.randint(16, 48)
+        delta = rng.randint(22, 55)
         if dark_bg:
             col = np.clip(bg + delta, 0, 255)
         else:
@@ -245,7 +259,7 @@ def render_scene(rng: random.Random, w: int, h: int, font_path: Path):
     avail_h = h - 2 * margin_y
 
     n_lines = rng.choices([1, 2, 3], weights=PROFILE["line_weights"])[0]
-    low_contrast = rng.random() < 0.45
+    low_contrast = rng.random() < 0.35
     size = int(min(h, w) * rng.uniform(*PROFILE["font"]))
     size = max(18, min(size, 92))
     line_gap = rng.uniform(1.35, 1.9)
@@ -349,6 +363,8 @@ def render_scene(rng: random.Random, w: int, h: int, font_path: Path):
         ov = ov.filter(ImageFilter.GaussianBlur(rng.uniform(1, 5)))
         img = Image.alpha_composite(img, ov)
 
+    if rng.random() < 0.5:
+        draw_ui_distractors(img, rng)
     scene = cv2.cvtColor(np.array(img.convert("RGB")), cv2.COLOR_RGB2BGR)
 
     # Global geometric transform: rotation + perspective + gentle scale.
@@ -405,6 +421,7 @@ def render_scene(rng: random.Random, w: int, h: int, font_path: Path):
 
     # Preprocessing-domain augmentation: teach the detector to survive the
     # browser's grayscale / adaptive-threshold / edge filters.
+    clean = warped.copy()
     r = rng.random()
     if r < 0.16:  # grayscale
         g = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
@@ -431,6 +448,11 @@ def render_scene(rng: random.Random, w: int, h: int, font_path: Path):
         mag = np.clip(mag * rng.uniform(0.6, 1.4), 0, 255).astype(np.uint8)
         warped = cv2.cvtColor(mag, cv2.COLOR_GRAY2BGR)
 
+    if r < 0.40:
+        _g = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
+        _frac = float(np.mean((_g < 8) | (_g > 247)))
+        if _frac > 0.72 or float(_g.std()) < 18:
+            warped = clean
     return warped, out_boxes
 
 
@@ -541,6 +563,27 @@ def main() -> None:
     (out / "dataset_meta.json").write_text(json.dumps(meta, indent=2))
     print(json.dumps({k: v for k, v in meta.items() if k != "classes"}, indent=2))
 
+
+def draw_ui_distractors(img, rng):
+    from PIL import ImageDraw
+    d = ImageDraw.Draw(img, "RGBA")
+    w, h = img.size
+    cols = [(200,200,210,110),(212,177,112,110),(120,230,230,100),(150,160,180,90)]
+    for _ in range(rng.randint(2, 6)):
+        kind = rng.randrange(4)
+        x = rng.randint(10, max(11, w - 60)); y = rng.randint(10, max(11, h - 60))
+        ww = rng.randint(20, max(24, w // 8)); hh = rng.randint(16, max(20, h // 8))
+        c = rng.choice(cols)
+        if kind == 0:
+            d.rectangle([x, y, x + ww, y + hh], outline=c, width=2)
+        elif kind == 1:
+            d.ellipse([x, y, x + ww, y + hh], outline=c, width=2)
+        elif kind == 2:
+            d.line([x, y + hh // 2, x + ww, y + hh // 2], fill=c, width=2)
+            d.line([x + ww - 14, y + hh // 2 - 8, x + ww, y + hh // 2], fill=c, width=2)
+            d.line([x + ww - 14, y + hh // 2 + 8, x + ww, y + hh // 2], fill=c, width=2)
+        else:
+            d.rectangle([x, y, x + 8, y + hh], fill=c)
 
 if __name__ == "__main__":
     main()

@@ -93,6 +93,7 @@ def main() -> None:
     ap.add_argument("--out", default=str(ROOT / "training" / "chargen"))
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--resume", action="store_true")
+    ap.add_argument("--init", default="", help="Checkpoint to fine-tune from")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
@@ -136,6 +137,10 @@ def main() -> None:
     )
 
     model = SolarisCharNet(NUM_CLASSES, width=args.width).to(device)
+    if args.init:
+        _ck = torch.load(args.init, map_location=device, weights_only=False)
+        model.load_state_dict(_ck["model"])
+        print(f"[chargen] initialized from {args.init} (epoch {_ck.get('epoch')})")
     n_params = sum(p.numel() for p in model.parameters())
     print(f"[chargen] parameters={n_params:,}")
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)

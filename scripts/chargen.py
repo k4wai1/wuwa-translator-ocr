@@ -74,10 +74,14 @@ class SolarisCharNet(nn.Module):
             nn.BatchNorm2d(c3),
             nn.ReLU(inplace=True),
         )
+        self.r1 = DilatedResidual(c3, 2)
+        self.r2 = DilatedResidual(c3, 3)
         self.out = nn.Conv2d(c3, 1 + num_classes + 4, 1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.out(self.stem(x))
+        x = self.stem(x)
+        x = self.r2(self.r1(x))
+        return self.out(x)
 
 
 def load_image(path: Path, imgsz: int) -> torch.Tensor:
@@ -379,3 +383,13 @@ def evenly_sample(items: list, n: int, seed: int = 0) -> list:
         return list(items)
     rng = random.Random(seed)
     return rng.sample(items, n)
+
+class DilatedResidual(nn.Module):
+    def __init__(self, ch: int, dilation: int):
+        super().__init__()
+        self.c1 = nn.Conv2d(ch, ch, 3, padding=dilation, dilation=dilation, bias=False)
+        self.b1 = nn.BatchNorm2d(ch)
+        self.c2 = nn.Conv2d(ch, ch, 1, bias=False)
+        self.b2 = nn.BatchNorm2d(ch)
+    def forward(self, x):
+        return F.relu(x + self.b2(self.c2(F.relu(self.b1(self.c1(x))))))

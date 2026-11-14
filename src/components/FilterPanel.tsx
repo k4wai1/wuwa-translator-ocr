@@ -91,7 +91,13 @@ export function FilterPanel({ source, processed, value, onChange }: FilterPanelP
           <button
             key={m.id}
             type="button"
-            onClick={() => set("mode", m.id)}
+            onClick={() => {
+              if (m.id === "grayscale") {
+                onChange({ ...value, mode: "grayscale", clahe: true });
+              } else {
+                set("mode", m.id);
+              }
+            }}
             className={`rounded-md border px-2 py-2 text-center font-display text-[0.66rem] font-semibold uppercase tracking-[0.12em] transition ${
               value.mode === m.id
                 ? "border-gold/70 bg-gold/15 text-gold"

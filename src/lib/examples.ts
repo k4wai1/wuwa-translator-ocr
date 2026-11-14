@@ -10,6 +10,13 @@ export interface ExampleImage {
 
 export const EXAMPLE_IMAGES: ExampleImage[] = [
   {
+    id: "demo-shop",
+    src: `${BASE}examples/demo-shop.jpg`,
+    title: "Demo sintética · SHOP",
+    note: "Muestra del dataset que el modelo lee al 100%: ideal para verificar el escáner.",
+    tag: "captura",
+  },
+  {
     id: "demo-cafe",
     src: `${BASE}examples/demo-cafe.jpg`,
     title: "Demo sintética · CAFE TEA",

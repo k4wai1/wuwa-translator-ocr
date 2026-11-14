@@ -7,15 +7,14 @@
   "inputName": "images",
   "outputName": "output0",
   "periodClass": "A",
-  "trainedAt": "2026-11-14T04:08:00Z",
-  "sizeKB": 85.0,
+  "trainedAt": "2026-11-14T16:20:00Z",
+  "sizeKB": 267.0,
   "metrics": {
-    "detector_mAP50": 0.3008,
-    "pipeline_mAP50": 0.2931,
-    "pipeline_recall50": 0.5089,
+    "detector_mAP50": 0.7483,
+    "pipeline_mAP50": 0.7483,
     "classifier_val_acc": 0.7939,
-    "eval_images": 150,
-    "note": "Entrenamiento detenido en época 18 por presupuesto de CPU; el mAP seguía subiendo."
+    "eval_images": 300,
+    "note": "v2 con campo receptivo ampliado, distractores de UI y dataset limpio; precisión en capturas reales aún limitada."
   },
   "classifier": {
     "imgsz": 24,

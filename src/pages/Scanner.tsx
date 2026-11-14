@@ -26,7 +26,7 @@ import { reconstruct } from "../lib/reconstruct";
 import type { CropRect, ModelState, OcrResult } from "../lib/types";
 import { EXAMPLE_IMAGES } from "../lib/examples";
 
-const DEFAULT_CROP: CropRect = { x: 0.025, y: 0.025, w: 0.95, h: 0.95 };
+const DEFAULT_CROP: CropRect = { x: 0, y: 0, w: 1, h: 1 };
 
 interface Source {
   url: string;
@@ -42,7 +42,8 @@ export function Scanner() {
   const [cropped, setCropped] = useState<HTMLCanvasElement | null>(null);
   const [filters, setFilters] = useState<FilterOptions>(DEFAULT_FILTERS);
   const deferredFilters = useDeferredValue(filters);
-  const [confidence, setConfidence] = useState(0.25);
+  const [confidence, setConfidence] = useState(0.3);
+  const [upscale, setUpscale] = useState(1);
   const [periodHeuristic, setPeriodHeuristic] = useState(true);
   const [model, setModel] = useState<ModelState>({ status: "idle" });
   const modelRef = useRef<SessionBundle | null>(null);
@@ -191,7 +192,7 @@ export function Scanner() {
       const input = processed ?? cropped;
       const res = await runOcr(
         input,
-        { confidence, iou: 0.45, periodHeuristic, maxDetections: 400 },
+        { confidence, iou: 0.45, periodHeuristic, maxDetections: 400, scale: upscale },
         bundle,
       );
       setResult(res);
@@ -204,7 +205,7 @@ export function Scanner() {
     } finally {
       setScanning(false);
     }
-  }, [confidence, cropped, ensureModel, periodHeuristic, processed, scanning]);
+  }, [confidence, cropped, ensureModel, periodHeuristic, processed, scanning, upscale]);
 
   const changePeriodHeuristic = (value: boolean) => {
     setPeriodHeuristic(value);
@@ -389,6 +390,15 @@ export function Scanner() {
                   <span className="mt-1 block text-[0.66rem] text-muted/80">
                     Bájalo si faltan glifos; súbelo si aparecen cajas falsas.
                   </span>
+                  <label className="mt-2 flex cursor-pointer items-center gap-2 text-[0.68rem] text-muted">
+                    <input
+                      type="checkbox"
+                      checked={upscale === 2}
+                      onChange={(e) => setUpscale(e.target.checked ? 2 : 1)}
+                      className="accent-gold"
+                    />
+                    Ampliar 2× (texto pequeño)
+                  </label>
                 </label>
                 <label className="flex items-center justify-between gap-3 rounded-md border border-line bg-surface/40 px-3 py-2 sm:flex-col sm:items-start sm:gap-1.5">
                   <span className="text-xs text-muted">A / punto</span>

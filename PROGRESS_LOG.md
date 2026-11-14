@@ -88,3 +88,16 @@ lenta para convoluciones modernas.
 - Validación del pipeline completa en Python: detector + clasificador + NMS. La lectura
   sobre las muestras sintéticas recupera los glifos principales; las capturas reales
   requieren recorte ajustado y contraste.
+
+## Fase 6 · Corrección del motor (parcial)
+
+- Se activó el tiling para recortes grandes (máx. 24 tiles, solape 28%), se corrigió el
+  botón "Gris + CLAHE" para activar CLAHE y se fusionó la confianza detector×clasificador.
+- Detector v2: 2 bloques residuales dilatados (RF ≈ 55 px), 67.970 parámetros.
+  Dataset micro regenerado con marcos de UI, distractores sin etiqueta y rechazo de
+  umbrales saturados. Mejor val: **mAP50 0.7483**, P 0.497, R 0.797 (época 16).
+- Clasificador: 79.4 % val (modelo 24×24) para identidad de glifos.
+- **Limitación pendiente:** en capturas reales (photo_3, póster) el detector todavía
+  produce falsos positivos en bordes de paneles y no generaliza del todo. Se necesita
+  etiquetado real o fine-tuning con GPU; el recorte ajustado + "Ampliar 2×" mejora el
+  resultado, pero no lo garantiza.
