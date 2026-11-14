@@ -6,6 +6,8 @@ Aplicación web **100% client-side** para escanear y traducir el alfabeto **Sola
 
 **Keywords:** Wuthering Waves Translator · WuWa OCR · Solaris-3 Alphabet Decoder · WuWa Font Scanner
 
+**Demo en vivo:** https://k4wai1.github.io/wuwa-translator-ocr/
+
 ## Características
 
 - **Escáner OCR** con carga por archivo, cámara, `Ctrl+V` o arrastrar y soltar.

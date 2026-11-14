@@ -394,17 +394,8 @@ export async function runOcr(
 ): Promise<OcrResult> {
   const started = performance.now();
   const { session, info } = sessionBundle ?? (await loadModel());
-  const { canvas: lb, scale, padX, padY } = letterbox(canvas, info.imgsz);
-  const tensor = toTensor(lb);
-  const feeds: Record<string, ort.Tensor> = { [info.inputName]: tensor };
-  const results = await session.run(feeds);
-  const output = results[info.outputName];
-  const dims = output.dims as number[];
-  const isChargen = dims.length === 4 && dims[1] === 1 + CLASSES.length + 4;
-  const raw = isChargen
-    ? decodeChargen(output, canvas.width, canvas.height, scale, padX, padY, opts.confidence, info.stride)
-    : decodeYolo(output, canvas.width, canvas.height, scale, padX, padY, opts.confidence);
-  const detections = nms(raw, opts.iou, opts.maxDetections);
+  const raw = await runTiled(session, info, canvas, opts.confidence);
+  const detections = nms(raw, opts.iou, opts.maxDetections, false);
   const classifier = await loadClassifier();
   if (classifier) await classifyDetections(canvas, detections, classifier);
 
@@ -472,4 +463,64 @@ async function classifyDetections(
     dets[i].cls = best;
     dets[i].letter = CLASSES[best] ?? "?";
   }
+}
+
+async function inferRegion(
+  session: ort.InferenceSession,
+  info: ModelInfo,
+  region: HTMLCanvasElement,
+  offX: number,
+  offY: number,
+  confidence: number,
+): Promise<Detection[]> {
+  const { canvas: lb, scale, padX, padY } = letterbox(region, info.imgsz);
+  const res = await session.run({ [info.inputName]: toTensor(lb) });
+  const output = res[info.outputName];
+  const dims = output.dims as number[];
+  const isChargen = dims.length === 4 && dims[1] === 1 + CLASSES.length + 4;
+  const raw = isChargen
+    ? decodeChargen(output, region.width, region.height, scale, padX, padY, confidence, info.stride)
+    : decodeYolo(output, region.width, region.height, scale, padX, padY, confidence);
+  for (const d of raw) {
+    d.x0 += offX; d.x1 += offX; d.y0 += offY; d.y1 += offY;
+  }
+  return raw;
+}
+
+/** Tile large crops so glyphs keep the scale seen during training. */
+async function runTiled(
+  session: ort.InferenceSession,
+  info: ModelInfo,
+  canvas: HTMLCanvasElement,
+  confidence: number,
+): Promise<Detection[]> {
+  const S = info.imgsz, w = canvas.width, h = canvas.height;
+  if (Math.max(w, h) <= S * 1.35) {
+    return inferRegion(session, info, canvas, 0, 0, confidence);
+  }
+  const step = Math.max(1, Math.floor(S * 0.72));
+  const xs: number[] = [], ys: number[] = [];
+  for (let x = 0; x < w; x += step) {
+    const v = Math.min(x, Math.max(0, w - S));
+    xs.push(v);
+    if (v + S >= w) break;
+  }
+  for (let y = 0; y < h; y += step) {
+    const v = Math.min(y, Math.max(0, h - S));
+    ys.push(v);
+    if (v + S >= h) break;
+  }
+  const all: Detection[] = [];
+  const tw = Math.min(S, w), th = Math.min(S, h);
+  const tile = document.createElement("canvas");
+  tile.width = tw; tile.height = th;
+  const tctx = tile.getContext("2d", { willReadFrequently: true })!;
+  for (const y0 of ys) {
+    for (const x0 of xs) {
+      tctx.clearRect(0, 0, tw, th);
+      tctx.drawImage(canvas, x0, y0, tw, th, 0, 0, tw, th);
+      all.push(...(await inferRegion(session, info, tile, x0, y0, confidence)));
+    }
+  }
+  return all;
 }
