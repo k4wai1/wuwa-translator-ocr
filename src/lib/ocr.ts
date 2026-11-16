@@ -492,7 +492,8 @@ async function classifyDetections(
     const hist = new Uint32Array(256);
     for (let j = 0; j < W * W; j++) hist[Math.max(0, Math.min(255, Math.round(gray[j])))]++;
     const pick = (q: number) => {
-      const target = S * S * q;
+      // Percentiles are over the 64x64 render, not the 32x32 model input.
+      const target = W * W * q;
       let acc = 0;
       for (let k = 0; k < 256; k++) {
         acc += hist[k];
@@ -503,7 +504,7 @@ async function classifyDetections(
     const p5 = pick(0.05);
     const p95 = pick(0.95);
     const denom = Math.max(p95 - p5, 10);
-    const base = i * S * S;
+    const base = i * 3 * S * S;
     for (let y = 0; y < S; y++) {
       for (let x = 0; x < S; x++) {
         let acc = 0;
@@ -514,19 +515,18 @@ async function classifyDetections(
           }
         }
         const v = acc / 4;
+        // NCHW: image stride 3*S*S, channel stride S*S.
         const idx = base + y * S + x;
         data[idx] = v;
-        data[BATCH * S * S + idx] = v;
-        data[2 * BATCH * S * S + idx] = v;
+        data[base + S * S + y * S + x] = v;
+        data[base + 2 * S * S + y * S + x] = v;
       }
     }
   }
   // Fixed batch of 16 (the wasm build mishandles this model's dynamic axis):
   // pad by repeating patch 0, then use only the first n logits.
   for (let bi = n; bi < BATCH; bi++) {
-    data.copyWithin(bi * S * S, 0, S * S);
-    data.copyWithin(BATCH * S * S + bi * S * S, BATCH * S * S, BATCH * S * S + S * S);
-    data.copyWithin(2 * BATCH * S * S + bi * S * S, 2 * BATCH * S * S, 2 * BATCH * S * S + S * S);
+    data.copyWithin(bi * 3 * S * S, 0, 3 * S * S);
   }
   const nc = CLASSES.length + 1;
   const tensor = new ort.Tensor("float32", data, [BATCH, 3, S, S]);
@@ -543,15 +543,12 @@ async function classifyDetections(
     let sum = 0;
     for (let k = 0; k < nc; k++) sum += Math.exp(logits[i * nc + k] - max);
     const prob = Math.exp(logits[i * nc + best] - max) / Math.max(1e-9, sum);
-    // 45 = noise/icon/partial glyph -> reject the box entirely.
-    const detCls = dets[i].cls;
+    // 45 = noise / icon / partial glyph -> reject the box entirely.
     const detConf = dets[i].confidence;
-    if (detConf < 0.45) continue;
-    if (best >= CLASSES.length && prob >= 0.9 && detConf < 0.55) continue;
-    dets[i].cls = detCls;
-    dets[i].letter = CLASSES[detCls] ?? "?";
-    dets[i].confidence = detConf;
-    dets[i].confidence = Math.sqrt(Math.max(0, dets[i].confidence * prob));
+    if (best >= CLASSES.length || prob < 0.35) continue;
+    dets[i].cls = best;
+    dets[i].letter = CLASSES[best] ?? "?";
+    dets[i].confidence = Math.sqrt(Math.max(0, detConf * prob));
     keep.push(dets[i]);
   }
   return keep;

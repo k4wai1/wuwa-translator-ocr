@@ -213,8 +213,10 @@ def run_image(path: Path, det, clf, conf: float, imgsz: int = 192):
         best = probs.argmax(1)
         conf_c = probs.max(1)
         fused = np.sqrt(np.clip(scores * conf_c, 0, 1))
-        keep = (scores >= 0.45) & ~((best == NOISE) & (conf_c >= 0.9) & (scores < 0.55))
-        boxes, scores, classes, fused = boxes[keep], scores[keep], classes[keep], fused[keep]
+        # Same rule as the browser: the classifier decides the glyph, and
+        # class 45 (noise/icon/partial) or a weak verdict drops the box.
+        keep = (scores >= 0.45) & (best < NOISE) & (conf_c >= 0.35)
+        boxes, scores, classes, fused = boxes[keep], scores[keep], best[keep], fused[keep]
         scores = fused
 
     return [(boxes[i], int(classes[i]), float(scores[i])) for i in range(len(boxes))], img

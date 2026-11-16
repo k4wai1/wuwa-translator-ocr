@@ -129,11 +129,40 @@ lenta para convoluciones modernas.
 - `test_01`: "STAY TUNED" (línea inferior) + ruido de fondo.
 - `test_02`: "STAY TUNED" ×2.
 - `test_03`: "NEW RESONATOR".
-- `test_04`: no legible (texto verde muy claro sobre blanco).
+- `test_04`: glifos de otra variante del lore (fuera de las 45 clases).
 - `test_05`: "STAY TUNED" repetido en las etiquetas del inventario.
 
-### Limitación conocida
-El clasificador 32×32 da resultados correctos en Python (SHOP, STAY TUNED) pero
-`onnxruntime-web` devuelve logits distintos para los mismos recortes; por eso el
-navegador usa la clase del detector y el clasificador solo veta iconos con
-probabilidad de ruido ≥ 0.9. Pendiente: aislar la diferencia wasm/Python.
+### Fix de paridad clasificador (wasm ↔ Python)
+Eran **dos** bugs en `classifyDetections`, no una diferencia de backend:
+1. **Percentiles sobre el tamaño equivocado**: el recorte se renderiza a 64×64
+   (`W`) y se reduce a 32×32 (`S`), pero el histograma se indexaba con
+   `S*S*q` en vez de `W*W*q`. p5/p95 caían en los percentiles 1.25 %/23.4 %,
+   saturando el parche.
+2. **Layout del tensor**: con el batch fijo de 16 el buffer se rellenaba como
+   `[C, N, H, W]` (`base = i*S*S`, canales a `BATCH*S*S`) pero se declaraba
+   `[N, 3, S, S]`. Con `N = 1` ambos layouts coinciden, por eso el bug solo
+   aparecía con ≥ 2 glifos. Ahora `base = i*3*S*S` y canales a `+S*S`, `+2*S*S`.
+
+Tras el fix el navegador decodifica **SHOP** (S 0.81, P 0.76, H 0.90, O 0.57;
+conf. media 77 %), **CAFE TEA** (93 %) y la clase del clasificador vuelve a
+mandar sobre la del detector, con rechazo de la clase 45.
+
+### test_04: fuera de alcance (no es un problema de color)
+Medido: `mean` de luminancia 115 (no es un fondo blanco), `std` luma 58.4 vs
+`min(R,G,B)` 54.2 → el canal cromático **no** aporta contraste (ratio 0.93).
+El recorte de los botones es perfectamente legible tras CLAHE y el detector
+coloca cajas sobre los glifos. Lo que falla es la forma de los glifos: al
+renderizar `VIEW NOTES` con `Solaris-3 Script.ttf` y compararlo con la captura,
+las formas no coinciden (la UI usa otra variante del lore — trazos tipo
+Lahaï-Roi: `S` con bandera, `O` con barra, `V` en Z). Esas clases no existen en
+las 45 del modelo y `Otros/` está prohibido para entrenar (AGENTS.md), así que
+`test_04` queda documentado como limitación, sin tocar el pipeline.
+
+### Holdout_5 final (conf 0.45, modelo desplegado)
+| Imagen | Lectura |
+|---|---|
+| test_01 | `STAY TUNED` (línea inferior) |
+| test_02 | `STAY TUNED` ×2 |
+| test_03 | `N E W R E S O N A T O R` |
+| test_04 | variante distinta, no decodificable |
+| test_05 | `STAY TUNED` repetido |
