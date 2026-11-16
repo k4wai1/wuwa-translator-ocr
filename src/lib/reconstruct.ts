@@ -12,7 +12,7 @@ export interface ReconstructOptions {
 
 export const DEFAULT_RECONSTRUCT: ReconstructOptions = {
   periodHeuristic: true,
-  spaceFactor: 0.34,
+  spaceFactor: 0.40,
   lineTolerance: 0.65,
 };
 
@@ -23,6 +23,32 @@ function median(values: number[]): number {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
+/** Drop duplicate boxes produced by overlapping windows (same glyph twice). */
+export function dedupeDetections(detections: Detection[]): Detection[] {
+  const sorted = [...detections]
+    .filter((d) => (d.x1 - d.x0) / Math.max(1, d.y1 - d.y0) <= 2.0)
+    .sort((a, b) => b.confidence - a.confidence);
+  const keep: Detection[] = [];
+  for (const d of sorted) {
+    const wd = Math.max(1, d.x1 - d.x0);
+    const cx = (d.x0 + d.x1) / 2;
+    let dup = false;
+    for (const k of keep) {
+      const wk = Math.max(1, k.x1 - k.x0);
+      const kx = (k.x0 + k.x1) / 2;
+      const hd = Math.max(1, d.y1 - d.y0);
+      const hk = Math.max(1, k.y1 - k.y0);
+      const cy = (d.y0 + d.y1) / 2;
+      const ky = (k.y0 + k.y1) / 2;
+      const closeX = Math.abs(cx - kx) < 0.35 * Math.max(wd, wk);
+      const closeY = Math.abs(cy - ky) < 0.4 * Math.max(hd, hk);
+      if (closeX && closeY) { dup = true; break; }
+    }
+    if (!dup) keep.push(d);
+  }
+  return keep;
+}
+
 interface WorkingLine {
   cy: number;
   height: number;
@@ -30,7 +56,8 @@ interface WorkingLine {
 }
 
 /** Group character detections into visual lines and reconstruct reading order. */
-export function reconstruct(detections: Detection[], opts: ReconstructOptions = DEFAULT_RECONSTRUCT): LineResult[] {
+export function reconstruct(rawDetections: Detection[], opts: ReconstructOptions = DEFAULT_RECONSTRUCT): LineResult[] {
+  const detections = dedupeDetections(rawDetections);
   if (!detections.length) return [];
   const height = median(detections.map((d) => d.y1 - d.y0)) || 1;
   const tol = Math.max(2, height * opts.lineTolerance);

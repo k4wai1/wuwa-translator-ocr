@@ -168,6 +168,16 @@ def build_targets(
                 if not placed:
                     continue
             heat[bi, 0, gy, gx] = 1.0
+            # Gaussian splat around the centre (CenterNet-style). A single
+            # positive pixel is too sparse for this tiny network to converge.
+            sigma = 1.0
+            for dy in range(-2, 3):
+                for dx in range(-2, 3):
+                    ny, nx = gy + dy, gx + dx
+                    if 0 <= ny < grid and 0 <= nx < grid:
+                        v = math.exp(-(dx * dx + dy * dy) / (2.0 * sigma * sigma))
+                        if v > float(heat[bi, 0, ny, nx]):
+                            heat[bi, 0, ny, nx] = v
             cls[bi, gy, gx] = c
             reg[bi, 0, gy, gx] = (px - (gx + 0.5) * STRIDE) / STRIDE
             reg[bi, 1, gy, gx] = (py - (gy + 0.5) * STRIDE) / STRIDE

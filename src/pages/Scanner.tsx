@@ -42,7 +42,7 @@ export function Scanner() {
   const [cropped, setCropped] = useState<HTMLCanvasElement | null>(null);
   const [filters, setFilters] = useState<FilterOptions>(DEFAULT_FILTERS);
   const deferredFilters = useDeferredValue(filters);
-  const [confidence, setConfidence] = useState(0.3);
+  const [confidence, setConfidence] = useState(0.45);
   const [upscale, setUpscale] = useState(1);
   const [periodHeuristic, setPeriodHeuristic] = useState(true);
   const [model, setModel] = useState<ModelState>({ status: "idle" });
@@ -190,9 +190,18 @@ export function Scanner() {
       const bundle = await ensureModel();
       if (!bundle) return;
       const input = processed ?? cropped;
+      const customFilters = (Object.keys(DEFAULT_FILTERS) as (keyof typeof DEFAULT_FILTERS)[])
+        .some((k) => filters[k] !== DEFAULT_FILTERS[k]);
       const res = await runOcr(
         input,
-        { confidence, iou: 0.45, periodHeuristic, maxDetections: 400, scale: upscale },
+        {
+          confidence,
+          iou: 0.4,
+          periodHeuristic,
+          maxDetections: 400,
+          scale: upscale,
+          preprocessed: customFilters,
+        },
         bundle,
       );
       setResult(res);
@@ -205,7 +214,7 @@ export function Scanner() {
     } finally {
       setScanning(false);
     }
-  }, [confidence, cropped, ensureModel, periodHeuristic, processed, scanning, upscale]);
+  }, [confidence, cropped, ensureModel, filters, periodHeuristic, processed, scanning, upscale]);
 
   const changePeriodHeuristic = (value: boolean) => {
     setPeriodHeuristic(value);

@@ -69,7 +69,7 @@ def main() -> None:
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = ROOT / "training" / "chargen" / "model-fp32.onnx"
+    tmp = out_path.parent / "model-fp32.onnx"
     dummy = torch.zeros(1, 3, imgsz, imgsz)
     torch.onnx.export(
         model,
@@ -118,8 +118,16 @@ def main() -> None:
         "metrics": report.get("onnx_val"),
         "sizeKB": report["size_kb"],
     }
-    (ROOT / "src" / "lib" / "model-meta.json").write_text(json.dumps(meta, indent=2) + "\n")
-    (ROOT / "training" / "chargen" / "export_report.json").write_text(json.dumps(report, indent=2) + "\n")
+    meta_path = ROOT / "src" / "lib" / "model-meta.json"
+    if meta_path.exists():
+        try:
+            prev = json.loads(meta_path.read_text())
+            if "classifier" in prev:
+                meta["classifier"] = prev["classifier"]
+        except Exception:
+            pass
+    meta_path.write_text(json.dumps(meta, indent=2) + "\n")
+    (out_path.parent / "export_report.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
 
 

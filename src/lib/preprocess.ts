@@ -361,6 +361,43 @@ export function autoEnhance(canvas: HTMLCanvasElement): FilterOptions {
   return next;
 }
 
+/**
+ * Normalize a crop into the exact domain the detector was trained on:
+ * luminance -> CLAHE(2.2) -> percentile stretch (p2..p98) -> grayscale RGB.
+ * This is what makes same-tone glyphs readable for the network.
+ */
+export function normalizeForModel(src: HTMLCanvasElement): HTMLCanvasElement {
+  const dst = createCanvas(src.width, src.height);
+  const ctx = dst.getContext("2d", { willReadFrequently: true })!;
+  ctx.drawImage(src, 0, 0);
+  const w = dst.width, h = dst.height;
+  const img = ctx.getImageData(0, 0, w, h);
+  const data = img.data;
+  let gray = luminance(data);
+  gray = clahe(gray, w, h, 2.2, 8);
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < gray.length; i++) hist[Math.max(0, Math.min(255, Math.round(gray[i])))]++;
+  const n = gray.length;
+  const pct = (p: number) => {
+    const target = n * p;
+    let acc = 0;
+    for (let i = 0; i < 256; i++) {
+      acc += hist[i];
+      if (acc >= target) return i;
+    }
+    return 255;
+  };
+  let lo = pct(0.02), hi = pct(0.98);
+  if (hi - lo < 8) { lo = 0; hi = 255; }
+  const k = 255 / Math.max(1, hi - lo);
+  for (let i = 0, j = 0; i < data.length; i += 4, j++) {
+    const v = Math.max(0, Math.min(255, (gray[j] - lo) * k));
+    data[i] = v; data[i + 1] = v; data[i + 2] = v;
+  }
+  ctx.putImageData(img, 0, 0);
+  return dst;
+}
+
 /** Small preview helper that keeps the canvas under maxDim on its longest side. */
 export function scaledPreview(src: HTMLCanvasElement, maxDim = 1100): HTMLCanvasElement {
   const scale = Math.min(1, maxDim / Math.max(src.width, src.height));

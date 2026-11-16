@@ -98,8 +98,12 @@ def main() -> None:
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
-    torch.set_num_threads(max(1, min(2, torch.get_num_threads())))
-    device = torch.device("cpu")
+    if torch.cuda.is_available():
+        torch.backends.cudnn.benchmark = True
+    else:
+        torch.set_num_threads(max(1, min(2, torch.get_num_threads())))
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"[chargen] device={device}", flush=True)
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -125,6 +129,7 @@ def main() -> None:
         drop_last=True,
         persistent_workers=args.workers > 0,
         prefetch_factor=2 if args.workers > 0 else None,
+        pin_memory=torch.cuda.is_available(),
     )
     val_loader = DataLoader(
         val_ds,
@@ -134,6 +139,7 @@ def main() -> None:
         collate_fn=collate,
         persistent_workers=args.workers > 0,
         prefetch_factor=2 if args.workers > 0 else None,
+        pin_memory=torch.cuda.is_available(),
     )
 
     model = SolarisCharNet(NUM_CLASSES, width=args.width).to(device)

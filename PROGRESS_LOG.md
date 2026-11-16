@@ -101,3 +101,39 @@ lenta para convoluciones modernas.
   produce falsos positivos en bordes de paneles y no generaliza del todo. Se necesita
   etiquetado real o fine-tuning con GPU; el recorte ajustado + "Ampliar 2×" mejora el
   resultado, pero no lo garantiza.
+
+## Fase 7 · Reingeniería del motor (2026-11-16)
+
+### Dataset
+- Generador reescrito: rotación ±4° (50 % a 0°), jitter ≤ 0.015, glifos de 24–48 px
+  (70 %) y 14–22 px (30 %), **sin** Otsu/adaptive/Sobel, contraste de luminancia
+  garantizado ≥ 22/255, fondos reales de `Ejemplos/` con blur 4.5–8, distractores
+  de UI sin etiqueta y 50 % de líneas desde un mazo balanceado de las 45 clases.
+- Local: 3 900 imágenes / 28 564 cajas, 0 vacías, 45/45 clases (364–1486 por clase).
+- Kaggle: 12 000 train / 1 500 val.
+
+### Modelos
+| Modelo | Config | Métrica |
+|---|---|---|
+| Detector | `width=64`, 118 633 params, 465 KB | mAP50 **0.9714** (val Kaggle), **0.9672** ONNX local |
+| Clasificador | 32×32, 46 clases (45 = ruido) | val_acc **0.9886** (Kaggle) / 0.9804 (local) |
+
+### Pipeline navegador
+- `letterbox` ya no amplía; normalización por ventana de 192 px (CLAHE 2.2 + p2..p98).
+- Barrido a escala nativa (más 1.5× en recortes pequeños), ventanas con solape 80 px.
+- NMS agnóstico 0.40, dedup entre ventanas, rechazo de cajas con aspecto > 2.
+- Filtros manuales (`threshold`/`edges`/`invert`) ya no se re-normalizan.
+- `cache: no-cache` en los fetch de modelos (evita servir ONNX viejos).
+
+### Holdout_5 (ciego, nunca usado en entrenamiento)
+- `test_01`: "STAY TUNED" (línea inferior) + ruido de fondo.
+- `test_02`: "STAY TUNED" ×2.
+- `test_03`: "NEW RESONATOR".
+- `test_04`: no legible (texto verde muy claro sobre blanco).
+- `test_05`: "STAY TUNED" repetido en las etiquetas del inventario.
+
+### Limitación conocida
+El clasificador 32×32 da resultados correctos en Python (SHOP, STAY TUNED) pero
+`onnxruntime-web` devuelve logits distintos para los mismos recortes; por eso el
+navegador usa la clase del detector y el clasificador solo veta iconos con
+probabilidad de ruido ≥ 0.9. Pendiente: aislar la diferencia wasm/Python.

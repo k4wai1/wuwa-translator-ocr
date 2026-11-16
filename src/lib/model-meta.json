@@ -3,23 +3,25 @@
   "imgsz": 192,
   "stride": 4,
   "numClasses": 45,
-  "width": 48,
+  "width": 64,
   "inputName": "images",
   "outputName": "output0",
   "periodClass": "A",
-  "trainedAt": "2026-11-14T16:20:00Z",
-  "sizeKB": 267.0,
+  "trainedAt": "2026-11-14T20:52:10.337994Z",
   "metrics": {
-    "detector_mAP50": 0.7483,
-    "pipeline_mAP50": 0.7483,
-    "classifier_val_acc": 0.7939,
-    "eval_images": 300,
-    "note": "v2 con campo receptivo ampliado, distractores de UI y dataset limpio; precisión en capturas reales aún limitada."
+    "mAP50": 0.9672320526691237,
+    "precision@0.5": 0.9526462395543176,
+    "recall@0.5": 0.9726962457337884,
+    "classifier_val_acc": 0.9886,
+    "eval_images": 3900,
+    "note": "Detector entrenado en Kaggle (12k im\u00e1genes, width 64); clasificador 32x32 con rechazo de ruido (clase 45)."
   },
+  "sizeKB": 464.6,
   "classifier": {
-    "imgsz": 24,
+    "imgsz": 32,
     "inputName": "images",
     "outputName": "logits",
-    "valAcc": 0.7939
+    "valAcc": 0.9886,
+    "noiseClass": 45
   }
 }

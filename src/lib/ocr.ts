@@ -2,6 +2,7 @@ import * as ort from "onnxruntime-web/wasm";
 import meta from "./model-meta.json";
 import { CLASSES } from "./classes";
 import { reconstruct } from "./reconstruct";
+import { normalizeForModel } from "./preprocess";
 import type { Detection, OcrResult } from "./types";
 
 export interface OcrOptions {
@@ -10,6 +11,8 @@ export interface OcrOptions {
   periodHeuristic: boolean;
   maxDetections: number;
   scale?: number;
+  /** True when the canvas already went through the user's manual filters. */
+  preprocessed?: boolean;
 }
 
 export const DEFAULT_OCR: OcrOptions = {
@@ -18,6 +21,7 @@ export const DEFAULT_OCR: OcrOptions = {
   periodHeuristic: true,
   maxDetections: 350,
   scale: 1,
+  preprocessed: false,
 };
 
 export interface ModelInfo {
@@ -53,7 +57,7 @@ export function modelUrl(): string {
 }
 
 async function fetchModel(onProgress?: (ratio: number, loaded: number, total: number) => void): Promise<ArrayBuffer> {
-  const res = await fetch(modelUrl(), { cache: "force-cache" });
+  const res = await fetch(modelUrl(), { cache: "no-cache" });
   if (!res.ok) {
     throw new Error(`MODEL_MISSING:${res.status}`);
   }
@@ -121,7 +125,7 @@ export async function loadClassifier(): Promise<ClassifierBundle | null> {
   classifierPromise = (async () => {
     const cfg = (meta as { classifier?: { imgsz?: number; inputName?: string; outputName?: string } })
       .classifier;
-    const res = await fetch(`${import.meta.env.BASE_URL}models/classifier.onnx`, { cache: "force-cache" });
+    const res = await fetch(`${import.meta.env.BASE_URL}models/classifier.onnx`, { cache: "no-cache" });
     if (!res.ok) return null;
     const session = await ort.InferenceSession.create(await res.arrayBuffer(), {
       executionProviders: ["wasm"],
@@ -143,7 +147,9 @@ function letterbox(src: HTMLCanvasElement, size: number): {
   padX: number;
   padY: number;
 } {
-  const scale = Math.min(size / src.width, size / src.height);
+  // Never upscale here: runTiled already scaled glyphs into the training band,
+  // and blowing up a small region would push them past 48 px again.
+  const scale = Math.min(1, size / src.width, size / src.height);
   const w = Math.max(1, Math.round(src.width * scale));
   const h = Math.max(1, Math.round(src.height * scale));
   const padX = Math.floor((size - w) / 2);
@@ -411,14 +417,19 @@ export async function runOcr(
     wc.imageSmoothingQuality = "high";
     wc.drawImage(canvas, 0, 0, work.width, work.height);
   }
-  const raw = await runTiled(session, info, work, opts.confidence);
-  const tiled = Math.max(canvas.width, canvas.height) > info.imgsz * 1.35;
-  let detections = nms(raw, opts.iou, opts.maxDetections, !tiled);
+  // Normalization happens per 192x192 window (see inferRegion): a global
+  // percentile stretch over a whole screenshot washes out faint UI text.
+  const raw = await runTiled(session, info, work, opts.confidence, !opts.preprocessed);
+  let detections = nms(raw, 0.4, opts.maxDetections, false);
+
+
   const classifier = await loadClassifier();
   if (classifier) {
+
+
     detections = await classifyDetections(work, detections, classifier);
-    // Refining classes can leave overlapping duplicates; drop them.
-    detections = nms(detections, 0.55, opts.maxDetections, !tiled);
+
+    detections = nms(detections, 0.4, opts.maxDetections, false);
   }
   if (up !== 1) {
     for (const d of detections) {
@@ -427,7 +438,7 @@ export async function runOcr(
   }
   const lines = reconstruct(detections, {
     periodHeuristic: opts.periodHeuristic,
-    spaceFactor: 0.34,
+    spaceFactor: 0.4,
     lineTolerance: 0.65,
   });
 
@@ -441,7 +452,7 @@ export async function runOcr(
   };
 }
 
-/** Refine detector classes using the second-stage glyph classifier. */
+/** Refine detector classes using the 32x32 glyph classifier. */
 async function classifyDetections(
   canvas: HTMLCanvasElement,
   dets: Detection[],
@@ -449,35 +460,77 @@ async function classifyDetections(
 ): Promise<Detection[]> {
   if (!dets.length) return [];
   const S = clf.imgsz;
+  const W = S * 2; // render at 64 px so thin outlines survive the downscale
   const n = dets.length;
-  const data = new Float32Array(n * 3 * S * S);
+  const BATCH = 16;
+  const data = new Float32Array(BATCH * 3 * S * S);
   const tmp = document.createElement("canvas");
-  tmp.width = S;
-  tmp.height = S;
+  tmp.width = W;
+  tmp.height = W;
   const ctx = tmp.getContext("2d", { willReadFrequently: true })!;
   for (let i = 0; i < n; i++) {
     const d = dets[i];
     const bw = Math.max(1, d.x1 - d.x0);
     const bh = Math.max(1, d.y1 - d.y0);
-    const mx = bw * 0.12;
-    const my = bh * 0.12;
-    const x0 = Math.max(0, d.x0 - mx);
-    const y0 = Math.max(0, d.y0 - my);
-    const x1 = Math.min(canvas.width, d.x1 + mx);
-    const y1 = Math.min(canvas.height, d.y1 + my);
-    ctx.clearRect(0, 0, S, S);
-    ctx.drawImage(canvas, x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0), 0, 0, S, S);
-    const px = ctx.getImageData(0, 0, S, S).data;
+    // Square crop with 15% margin: same geometry used to train GlyphNet.
+    const side = Math.max(bw, bh) * 1.15;
+    const cx = (d.x0 + d.x1) / 2;
+    const cy = (d.y0 + d.y1) / 2;
+    const x0 = Math.max(0, cx - side / 2);
+    const y0 = Math.max(0, cy - side / 2);
+    const x1 = Math.min(canvas.width, cx + side / 2);
+    const y1 = Math.min(canvas.height, cy + side / 2);
+    ctx.clearRect(0, 0, W, W);
+    ctx.drawImage(canvas, x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0), 0, 0, W, W);
+    const px = ctx.getImageData(0, 0, W, W).data;
+    // Per-crop percentile stretch (p5..p95) -> a same-tone glyph becomes
+    // high contrast inside its own box, exactly like during training.
+    const gray = new Float32Array(W * W);
+    for (let j = 0; j < W * W; j++) {
+      gray[j] = 0.299 * px[j * 4] + 0.587 * px[j * 4 + 1] + 0.114 * px[j * 4 + 2];
+    }
+    const hist = new Uint32Array(256);
+    for (let j = 0; j < W * W; j++) hist[Math.max(0, Math.min(255, Math.round(gray[j])))]++;
+    const pick = (q: number) => {
+      const target = S * S * q;
+      let acc = 0;
+      for (let k = 0; k < 256; k++) {
+        acc += hist[k];
+        if (acc >= target) return k;
+      }
+      return 255;
+    };
+    const p5 = pick(0.05);
+    const p95 = pick(0.95);
+    const denom = Math.max(p95 - p5, 10);
     const base = i * S * S;
-    for (let j = 0; j < S * S; j++) {
-      data[base + j] = px[j * 4] / 255;
-      data[n * S * S + base + j] = px[j * 4 + 1] / 255;
-      data[2 * n * S * S + base + j] = px[j * 4 + 2] / 255;
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        let acc = 0;
+        for (let dy = 0; dy < 2; dy++) {
+          for (let dx = 0; dx < 2; dx++) {
+            const g = gray[(y * 2 + dy) * W + (x * 2 + dx)];
+            acc += Math.max(0, Math.min(1, (g - p5) / denom));
+          }
+        }
+        const v = acc / 4;
+        const idx = base + y * S + x;
+        data[idx] = v;
+        data[BATCH * S * S + idx] = v;
+        data[2 * BATCH * S * S + idx] = v;
+      }
     }
   }
-  const tensor = new ort.Tensor("float32", data, [n, 3, S, S]);
+  // Fixed batch of 16 (the wasm build mishandles this model's dynamic axis):
+  // pad by repeating patch 0, then use only the first n logits.
+  for (let bi = n; bi < BATCH; bi++) {
+    data.copyWithin(bi * S * S, 0, S * S);
+    data.copyWithin(BATCH * S * S + bi * S * S, BATCH * S * S, BATCH * S * S + S * S);
+    data.copyWithin(2 * BATCH * S * S + bi * S * S, 2 * BATCH * S * S, 2 * BATCH * S * S + S * S);
+  }
+  const nc = CLASSES.length + 1;
+  const tensor = new ort.Tensor("float32", data, [BATCH, 3, S, S]);
   const out = (await clf.session.run({ [clf.inputName]: tensor }))[clf.outputName];
-  const nc = out.dims[1] as number;
   const logits = out.data as Float32Array;
   const keep: Detection[] = [];
   for (let i = 0; i < n; i++) {
@@ -490,10 +543,14 @@ async function classifyDetections(
     let sum = 0;
     for (let k = 0; k < nc; k++) sum += Math.exp(logits[i * nc + k] - max);
     const prob = Math.exp(logits[i * nc + best] - max) / Math.max(1e-9, sum);
-    if (best >= CLASSES.length) continue;
-    dets[i].cls = best;
-    dets[i].letter = CLASSES[best] ?? "?";
-    // Fuse detector and classifier confidence; icon fragments get rejected.
+    // 45 = noise/icon/partial glyph -> reject the box entirely.
+    const detCls = dets[i].cls;
+    const detConf = dets[i].confidence;
+    if (detConf < 0.45) continue;
+    if (best >= CLASSES.length && prob >= 0.9 && detConf < 0.55) continue;
+    dets[i].cls = detCls;
+    dets[i].letter = CLASSES[detCls] ?? "?";
+    dets[i].confidence = detConf;
     dets[i].confidence = Math.sqrt(Math.max(0, dets[i].confidence * prob));
     keep.push(dets[i]);
   }
@@ -507,8 +564,10 @@ async function inferRegion(
   offX: number,
   offY: number,
   confidence: number,
+  normalizeRegion = false,
 ): Promise<Detection[]> {
-  const { canvas: lb, scale, padX, padY } = letterbox(region, info.imgsz);
+  const prepared = normalizeRegion ? normalizeForModel(region) : region;
+  const { canvas: lb, scale, padX, padY } = letterbox(prepared, info.imgsz);
   const res = await session.run({ [info.inputName]: toTensor(lb) });
   const output = res[info.outputName];
   const dims = output.dims as number[];
@@ -522,43 +581,79 @@ async function inferRegion(
   return raw;
 }
 
-/** Tile large crops so glyphs keep the scale seen during training. */
+/**
+ * Window sweep at native scale: real UI glyphs are ~18-34 px tall, which is
+ * already inside the training band. Small crops get one extra 1.5x pass so
+ * 14 px text is still readable. Nothing is ever squashed into a letterbox.
+ */
 async function runTiled(
   session: ort.InferenceSession,
   info: ModelInfo,
   canvas: HTMLCanvasElement,
   confidence: number,
+  normalizeRegion: boolean,
 ): Promise<Detection[]> {
-  const S = info.imgsz, w = canvas.width, h = canvas.height;
-  // Small crops go straight through; large ones are tiled (max 24 tiles).
+  const S = info.imgsz;
+  const w = canvas.width, h = canvas.height;
   if (Math.max(w, h) <= S * 1.35) {
-    return inferRegion(session, info, canvas, 0, 0, confidence);
+    return inferRegion(session, info, canvas, 0, 0, confidence, normalizeRegion);
   }
-  const step = Math.max(1, Math.floor(S * 0.72));
-  const xs: number[] = [], ys: number[] = [];
-  for (let x = 0; x < w; x += step) {
-    const v = Math.min(x, Math.max(0, w - S));
-    xs.push(v);
-    if (v + S >= w) break;
-  }
-  for (let y = 0; y < h; y += step) {
-    const v = Math.min(y, Math.max(0, h - S));
-    ys.push(v);
-    if (v + S >= h) break;
-  }
-  if (xs.length * ys.length > 24) return inferRegion(session, info, canvas, 0, 0, confidence);
+
+  const maxDim = Math.max(w, h);
+  const fit = Math.min(1, 1800 / maxDim);
+  const base = maxDim > 700 ? [1] : [1, 1.5];
+  const scales = base.map((v) => v * fit).filter((v, i, a) => a.indexOf(v) === i);
+
+  const step = Math.max(1, S - 80);
   const all: Detection[] = [];
-  const tw = Math.min(S, w), th = Math.min(S, h);
-  const tile = document.createElement("canvas");
-  tile.width = tw; tile.height = th;
-  const tctx = tile.getContext("2d", { willReadFrequently: true })!;
-  for (const y0 of ys) {
-    for (const x0 of xs) {
-      tctx.clearRect(0, 0, tw, th);
-      tctx.drawImage(canvas, x0, y0, tw, th, 0, 0, tw, th);
-      all.push(...(await inferRegion(session, info, tile, x0, y0, confidence)));
+  for (const scale of scales) {
+    const nw = Math.max(1, Math.round(w * scale));
+    const nh = Math.max(1, Math.round(h * scale));
+    const scaled = document.createElement("canvas");
+    scaled.width = nw;
+    scaled.height = nh;
+    const sctx = scaled.getContext("2d", { willReadFrequently: true })!;
+    sctx.imageSmoothingQuality = "high";
+    sctx.drawImage(canvas, 0, 0, w, h, 0, 0, nw, nh);
+
+    const xs: number[] = [];
+    for (let x = 0; ; x += step) {
+      xs.push(Math.min(x, Math.max(0, nw - S)));
+      if (x + S >= nw) break;
+    }
+    const ys: number[] = [];
+    for (let y = 0; ; y += step) {
+      ys.push(Math.min(y, Math.max(0, nh - S)));
+      if (y + S >= nh) break;
+    }
+    // Bound the sweep (never fall back to squashing the crop).
+    const budget = 60;
+    if (xs.length * ys.length > budget) {
+      const keep = Math.max(1, Math.floor(budget / Math.max(1, ys.length)));
+      const stride = Math.ceil((nw - Math.min(S, nw)) / Math.max(1, keep - 1)) || 1;
+      xs.length = 0;
+      for (let x = 0; ; x += stride) {
+        xs.push(Math.min(x, Math.max(0, nw - S)));
+        if (x + S >= nw) break;
+      }
+    }
+
+    const tw = Math.min(S, nw), th = Math.min(S, nh);
+    const tile = document.createElement("canvas");
+    tile.width = tw;
+    tile.height = th;
+    const tctx = tile.getContext("2d", { willReadFrequently: true })!;
+    for (const y0 of ys) {
+      for (const x0 of xs) {
+        tctx.clearRect(0, 0, tw, th);
+        tctx.drawImage(scaled, x0, y0, tw, th, 0, 0, tw, th);
+        const found = await inferRegion(session, info, tile, x0, y0, confidence, normalizeRegion);
+        for (const d of found) {
+          d.x0 /= scale; d.x1 /= scale; d.y0 /= scale; d.y1 /= scale;
+          all.push(d);
+        }
+      }
     }
   }
   return all;
 }
-
