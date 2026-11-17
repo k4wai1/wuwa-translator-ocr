@@ -35,15 +35,15 @@ export function charForClassIndex(index: number): string {
 
 /** Human-friendly names for the visual keyboard / alphabet page. */
 export const GLYPH_LABELS: Record<string, string> = {
-  "(": "Paréntesis izq.",
-  ")": "Paréntesis der.",
-  ",": "Coma",
-  "-": "Guion",
-  "/": "Barra",
-  ":": "Dos puntos",
-  ";": "Punto y coma",
-  "[": "Corchete izq.",
-  "]": "Corchete der.",
+  "(": "glyph.parenLeft",
+  ")": "glyph.parenRight",
+  ",": "glyph.comma",
+  "-": "glyph.hyphen",
+  "/": "glyph.slash",
+  ":": "glyph.colon",
+  ";": "glyph.semicolon",
+  "[": "glyph.bracketLeft",
+  "]": "glyph.bracketRight",
 };
 
 export const SUPPORTED_PUNCTUATION = ["(", ")", ",", "-", ".", "/", ":", ";", "[", "]"];

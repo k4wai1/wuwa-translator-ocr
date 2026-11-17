@@ -166,3 +166,55 @@ las 45 del modelo y `Otros/` está prohibido para entrenar (AGENTS.md), así que
 | test_03 | `N E W R E S O N A T O R` |
 | test_04 | variante distinta, no decodificable |
 | test_05 | `STAY TUNED` repetido |
+
+## Fase 8 · Auditoría del motor, fuentes oficiales e i18n (2026-11-16)
+
+### Bugs corregidos en la inferencia
+1. **Batching del clasificador**: `classifyDetections` reservaba un buffer de 16 y recorría
+   `i < n`; con más de 16 detecciones escribía fuera del `Float32Array` y leía logits
+   inexistentes (NaN), descartando todo a partir del glifo 17. Ahora procesa en chunks de 16.
+2. **Glifos finos (I, 3)**: el corte `p < confidence` del mapa de calor eliminaba trazos
+   débiles antes de que el clasificador pudiera verlos. El detector admite ahora candidatos
+   desde `min(confidence, 0.16)`, guarda el `p` crudo y filtra al final por `sqrt(p × prob)`;
+   los rescatados exigen `prob ≥ 0.75` y altura ≥ 60 % de la mediana.
+3. **Espaciado con tracking ancho**: `NEW RESONATOR` insertaba espacio entre cada letra.
+   `reconstruct.ts` y `eval_holdout.py` detectan líneas con tracking (mediana de huecos >
+   0.35 × medW, ignorando saltos entre etiquetas) y exigen `max(0.40 × medW, 1.4 × medGap)`.
+4. **Duplicados y comas espurias**: dedupe a `0.25 × max(w,h)`, descarte de cajas cortas
+   dentro del vano de un glifo alto y de cajas de la misma clase solapadas.
+5. **`spaceFactor`**: el switch A/punto usaba 0.34 y el escaneo 0.40; ahora ambos 0.40.
+6. **Umbral por defecto** del escáner: 0.45 → 0.30.
+
+Medido con el modelo desplegado (conf 0.30): `SHOP` (80 %), `CAFE TEA` (86 %) y `SOLARIS`
+(71 %) limpias; `NEW RESONATOR` con espacio correcto; `STAY TUNED` ×2 en `test_02`.
+
+El `3` de `demo-light` queda **fuera de alcance**: su contraste real es ~6 % (el mínimo del
+dataset es 22/255), el clasificador devuelve `NOISE` 0.84 incluso con recorte ajustado,
+ecualización o CLAHE, y el test-time augmentation con recorte ajustado introducía comas
+falsas. Documentado, no parcheado.
+
+### Fuentes oficiales
+- `public/fonts/font_reparada_v3.ttf` (UI del juego; subset latino 5.6 MB → 22 KB con
+  `fontTools`) como primera fuente de `--font-body` y `--font-display`.
+- `public/fonts/WutheringWaves-Regular.otf` como `WuWa-Logo` (clase `.font-logo`) en el
+  logo, el hero y el footer. `H7GBKHeavy.TTF` queda solo en local (excluida).
+- `Manual.downloadPng()` pinta con `"WuWa-UI"` en vez de `Chakra Petch`.
+
+### i18n
+- 10 idiomas (`en, es, ja, zh, hi, fr, ar, bn, pt, ru`), **inglés por defecto** salvo
+  `localStorage["wuwa-ocr-lang"]`; `ar` activa `dir="rtl"`.
+- `src/lib/i18n.tsx` + `src/locales/*.json` (296 claves planas, carga por chunk).
+- `scripts/check_i18n.mjs` valida claves, valores vacíos y placeholders; corre en
+  `prebuild` (`pnpm i18n:check`).
+- Selector de idioma en el header; skill `.opencode/skills/i18n-parity/SKILL.md` y reglas
+  nuevas en `AGENTS.md`.
+
+### Créditos y licencia
+- `LICENSE` MIT a nombre de Luis (@k4wai1) y bloque de créditos + stack en el footer y en
+  `README.md`.
+
+### Verificación
+- `pnpm i18n:check` ✅ · `pnpm build` ✅ · consola sin errores.
+- Navegador: inglés por defecto, cambio a es/ja/ar/ru correcto, RTL en árabe,
+  `SHOP`/`CAFE TEA`/`SOLARIS` leídos, 375×812 y 1440×900 OK.
+- Nuevas fuentes servidas con HTTP 200 y aplicadas (`font-family: WuWa-Logo, …`).

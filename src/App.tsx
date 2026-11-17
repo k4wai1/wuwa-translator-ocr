@@ -3,6 +3,7 @@ import { HashRouter, Route, Routes, useLocation } from "react-router-dom";
 import { Header, MobileNav } from "./components/Header";
 import { Footer } from "./components/Footer";
 import { ThemeProvider } from "./lib/theme";
+import { I18nProvider } from "./lib/i18n";
 import { Scanner } from "./pages/Scanner";
 import { Manual } from "./pages/Manual";
 import { Alphabet } from "./pages/Alphabet";
@@ -19,6 +20,7 @@ function ScrollToTop() {
 
 export default function App() {
   return (
+    <I18nProvider>
     <ThemeProvider>
       <HashRouter>
         <ScrollToTop />
@@ -40,5 +42,6 @@ export default function App() {
         </div>
       </HashRouter>
     </ThemeProvider>
+    </I18nProvider>
   );
 }

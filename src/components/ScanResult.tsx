@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { OcrResult } from "../lib/types";
 import { CheckIcon, CopyIcon, DownloadIcon, EyeIcon } from "./Icons";
+import { useI18n } from "../lib/i18n";
 
 interface ScanResultProps {
   result: OcrResult;
@@ -10,6 +11,7 @@ interface ScanResultProps {
 }
 
 export function ScanResult({ result, imageUrl, periodHeuristic, onPeriodHeuristic }: ScanResultProps) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   const [showBoxes, setShowBoxes] = useState(true);
   const [showLetters, setShowLetters] = useState(true);
@@ -58,25 +60,24 @@ export function ScanResult({ result, imageUrl, periodHeuristic, onPeriodHeuristi
     <div className="animate-fade-up space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <span className="chip border-ok/40 text-ok">
-          <CheckIcon className="h-3 w-3" /> Escaneo completado
+          <CheckIcon className="h-3 w-3" /> {t("result.done")}
         </span>
-        <span className="chip">{charCount} glifos</span>
-        <span className="chip">{result.lines.length} líneas</span>
-        <span className="chip">conf. media {(avgConf * 100).toFixed(0)}%</span>
+        <span className="chip">{t("common.glyphs", { count: charCount })}</span>
+        <span className="chip">{t("common.lines", { count: result.lines.length })}</span>
+        <span className="chip">{t("common.avgConf", { value: (avgConf * 100).toFixed(0) })}</span>
         <span className="chip">{Math.round(result.tookMs)} ms</span>
       </div>
 
       {charCount === 0 && (
         <div className="rounded-lg border border-gold/40 bg-gold/10 p-4 text-sm text-ink">
-          No se detectó ningún glifo. Prueba a recortar más cerca del texto, subir el contraste con
-          <strong> Auto-mejorar</strong> o bajar el umbral de confianza.
+          {t("result.empty")}
         </div>
       )}
 
       <div className="grid gap-5 lg:grid-cols-[1.15fr_1fr]">
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="label">Lectura sobre la imagen</p>
+            <p className="label">{t("result.reading")}</p>
             <div className="flex items-center gap-3 text-[0.68rem] text-muted">
               <label className="flex cursor-pointer items-center gap-1.5">
                 <input
@@ -85,7 +86,7 @@ export function ScanResult({ result, imageUrl, periodHeuristic, onPeriodHeuristi
                   onChange={(e) => setShowBoxes(e.target.checked)}
                   className="accent-gold"
                 />
-                Cajas
+                {t("result.boxes")}
               </label>
               <label className="flex cursor-pointer items-center gap-1.5">
                 <input
@@ -94,13 +95,13 @@ export function ScanResult({ result, imageUrl, periodHeuristic, onPeriodHeuristi
                   onChange={(e) => setShowLetters(e.target.checked)}
                   className="accent-gold"
                 />
-                Letras
+                {t("result.letters")}
               </label>
             </div>
           </div>
 
           <div className="relative overflow-hidden rounded-lg border border-line bg-black/40">
-            <img src={imageUrl} alt="Texto Solaris-3 detectado" className="block h-auto w-full" />
+            <img src={imageUrl} alt={t("result.imgAlt")} className="block h-auto w-full" />
             <svg
               viewBox={`0 0 ${result.width} ${result.height}`}
               className="pointer-events-none absolute inset-0 h-full w-full"
@@ -133,7 +134,7 @@ export function ScanResult({ result, imageUrl, periodHeuristic, onPeriodHeuristi
                         y={above}
                         textAnchor="middle"
                         fontSize={labelSize}
-                        fontFamily="'Chakra Petch', sans-serif"
+                        fontFamily="'WuWa-UI', 'Chakra Petch', sans-serif"
                         fontWeight={700}
                         fill={color}
                         stroke="#07080c"
@@ -150,8 +151,7 @@ export function ScanResult({ result, imageUrl, periodHeuristic, onPeriodHeuristi
             </svg>
           </div>
           <p className="text-[0.68rem] text-muted/80">
-            Las letras sobre las cajas son la traducción directa del glifo. Las cajas cian son
-            puntuación.
+            {t("result.caption")}
           </p>
         </div>
 
@@ -165,7 +165,7 @@ export function ScanResult({ result, imageUrl, periodHeuristic, onPeriodHeuristi
                   tab === "text" ? "bg-gold text-black" : "text-muted hover:text-ink"
                 }`}
               >
-                Transcripción
+                {t("result.transcription")}
               </button>
               <button
                 type="button"
@@ -174,15 +174,15 @@ export function ScanResult({ result, imageUrl, periodHeuristic, onPeriodHeuristi
                   tab === "data" ? "bg-gold text-black" : "text-muted hover:text-ink"
                 }`}
               >
-                Datos
+                {t("result.data")}
               </button>
             </div>
             <div className="flex gap-1.5">
-              <button type="button" className="btn btn-ghost !px-2.5 !py-1.5" onClick={copy} title="Copiar texto">
+              <button type="button" className="btn btn-ghost !px-2.5 !py-1.5" onClick={copy} title={t("result.copyTitle")}>
                 {copied ? <CheckIcon className="h-3.5 w-3.5 text-ok" /> : <CopyIcon className="h-3.5 w-3.5" />}
-                <span className="hidden sm:inline">{copied ? "Copiado" : "Copiar"}</span>
+                <span className="hidden sm:inline">{copied ? t("common.copied") : t("common.copy")}</span>
               </button>
-              <button type="button" className="btn btn-ghost !px-2.5 !py-1.5" onClick={download} title="Descargar .txt">
+              <button type="button" className="btn btn-ghost !px-2.5 !py-1.5" onClick={download} title={t("result.downloadTitle")}>
                 <DownloadIcon className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">.txt</span>
               </button>
@@ -198,11 +198,9 @@ export function ScanResult({ result, imageUrl, periodHeuristic, onPeriodHeuristi
               </div>
               <div className="flex items-start justify-between gap-3 rounded-lg border border-line bg-surface/40 px-3 py-2.5">
                 <div>
-                  <p className="text-xs font-semibold text-ink">Heurística A / punto</p>
+                  <p className="text-xs font-semibold text-ink">{t("result.periodTitle")}</p>
                   <p className="mt-0.5 text-[0.68rem] leading-relaxed text-muted">
-                    La fuente dibuja <span className="glyph text-gold">A</span> y{" "}
-                    <span className="glyph text-gold">.</span> iguales. Si está activo, una «A»
-                    aislada al final de una palabra se interpreta como punto.
+                    {t("result.periodBody")}
                   </p>
                 </div>
                 <button
@@ -232,7 +230,7 @@ export function ScanResult({ result, imageUrl, periodHeuristic, onPeriodHeuristi
                     </span>
                     <span className="min-w-0 flex-1 truncate font-body text-ink">{line.text}</span>
                     <span className="shrink-0 text-[0.65rem] text-muted">
-                      {line.detections.length} glifos
+                      {t("common.glyphs", { count: line.detections.length })}
                     </span>
                   </div>
                 ))}
@@ -244,9 +242,9 @@ export function ScanResult({ result, imageUrl, periodHeuristic, onPeriodHeuristi
                 <thead className="sticky top-0 bg-surface-2 text-muted">
                   <tr className="font-display text-[0.6rem] uppercase tracking-widest">
                     <th className="px-2 py-2">#</th>
-                    <th className="px-2 py-2">Glifo</th>
-                    <th className="px-2 py-2">Clase</th>
-                    <th className="px-2 py-2">Conf.</th>
+                    <th className="px-2 py-2">{t("result.thGlyph")}</th>
+                    <th className="px-2 py-2">{t("result.thClass")}</th>
+                    <th className="px-2 py-2">{t("result.thConf")}</th>
                     <th className="px-2 py-2">x, y</th>
                   </tr>
                 </thead>
@@ -267,7 +265,7 @@ export function ScanResult({ result, imageUrl, periodHeuristic, onPeriodHeuristi
                 </tbody>
               </table>
               <p className="flex items-center gap-1.5 border-t border-line/50 px-2 py-2 text-[0.65rem] text-muted">
-                <EyeIcon className="h-3 w-3" /> Clase 0 = A/punto · 26–35 = dígitos · 36–44 = signos
+                <EyeIcon className="h-3 w-3" /> {t("result.legend")}
               </p>
             </div>
           )}

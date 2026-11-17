@@ -333,7 +333,10 @@ function decodeChargen(
     for (let gx = 0; gx < gw; gx++) {
       const idx = gy * gw + gx;
       const p = heat[idx];
-      if (p < confidence) continue;
+      // Admit faint candidates here (thin strokes, split glyphs like I/3) and
+      // let the 32x32 classifier + the final fused score decide.
+      const candFloor = Math.min(confidence, 0.16);
+      if (p < candFloor) continue;
       // 3x3 local-maximum check (equivalent to the Python decode).
       let peak = true;
       for (let dy = -1; dy <= 1 && peak; dy++) {
@@ -364,7 +367,7 @@ function decodeChargen(
       let sum = 0;
       for (let k = 0; k < numClasses; k++) sum += Math.exp(at(1 + k, idx) - maxLogit);
       const clsProb = Math.exp(bestLogit - maxLogit) / Math.max(1e-9, sum);
-      const score = p * clsProb;
+      void clsProb;
 
       const dx = at(1 + numClasses, idx);
       const dy = at(2 + numClasses, idx);
@@ -388,7 +391,9 @@ function decodeChargen(
       dets.push({
         cls: bestCls,
         letter: CLASSES[bestCls],
-        confidence: score,
+        // Raw heatmap peak: the classifier refines it and the fused score is
+        // compared against the user threshold afterwards.
+        confidence: p,
         x0: cx0,
         y0: cy0,
         x1: cx1,
@@ -427,7 +432,7 @@ export async function runOcr(
   if (classifier) {
 
 
-    detections = await classifyDetections(work, detections, classifier);
+    detections = await classifyDetections(work, detections, classifier, opts.confidence);
 
     detections = nms(detections, 0.4, opts.maxDetections, false);
   }
@@ -457,23 +462,29 @@ async function classifyDetections(
   canvas: HTMLCanvasElement,
   dets: Detection[],
   clf: ClassifierBundle,
+  minConfidence: number,
 ): Promise<Detection[]> {
   if (!dets.length) return [];
   const S = clf.imgsz;
   const W = S * 2; // render at 64 px so thin outlines survive the downscale
-  const n = dets.length;
-  const BATCH = 16;
-  const data = new Float32Array(BATCH * 3 * S * S);
+  const BATCH = 16; // the wasm build mishandles a dynamic batch axis
+  const VARIANTS = [1.15]; // training margin (tight boxes overfit to commas)
+  const GROUP = BATCH / VARIANTS.length;
+  const nc = CLASSES.length + 1;
+  // Rescued (low-heat) candidates must be glyph-sized: below the candidate
+  // floor sits mostly stroke fragments that the classifier reads as ",".
+  const heights = dets.map((d) => d.y1 - d.y0).sort((a, b) => a - b);
+  const medianH = heights[heights.length >> 1] || 1;
   const tmp = document.createElement("canvas");
   tmp.width = W;
   tmp.height = W;
   const ctx = tmp.getContext("2d", { willReadFrequently: true })!;
-  for (let i = 0; i < n; i++) {
-    const d = dets[i];
+  const keep: Detection[] = [];
+
+  const fillPatch = (data: Float32Array, slot: number, d: Detection, margin: number) => {
     const bw = Math.max(1, d.x1 - d.x0);
     const bh = Math.max(1, d.y1 - d.y0);
-    // Square crop with 15% margin: same geometry used to train GlyphNet.
-    const side = Math.max(bw, bh) * 1.15;
+    const side = Math.max(bw, bh) * margin;
     const cx = (d.x0 + d.x1) / 2;
     const cy = (d.y0 + d.y1) / 2;
     const x0 = Math.max(0, cx - side / 2);
@@ -504,7 +515,8 @@ async function classifyDetections(
     const p5 = pick(0.05);
     const p95 = pick(0.95);
     const denom = Math.max(p95 - p5, 10);
-    const base = i * 3 * S * S;
+    // NCHW: image stride 3*S*S, channel stride S*S.
+    const base = slot * 3 * S * S;
     for (let y = 0; y < S; y++) {
       for (let x = 0; x < S; x++) {
         let acc = 0;
@@ -515,41 +527,65 @@ async function classifyDetections(
           }
         }
         const v = acc / 4;
-        // NCHW: image stride 3*S*S, channel stride S*S.
         const idx = base + y * S + x;
         data[idx] = v;
         data[base + S * S + y * S + x] = v;
         data[base + 2 * S * S + y * S + x] = v;
       }
     }
-  }
-  // Fixed batch of 16 (the wasm build mishandles this model's dynamic axis):
-  // pad by repeating patch 0, then use only the first n logits.
-  for (let bi = n; bi < BATCH; bi++) {
-    data.copyWithin(bi * 3 * S * S, 0, 3 * S * S);
-  }
-  const nc = CLASSES.length + 1;
-  const tensor = new ort.Tensor("float32", data, [BATCH, 3, S, S]);
-  const out = (await clf.session.run({ [clf.inputName]: tensor }))[clf.outputName];
-  const logits = out.data as Float32Array;
-  const keep: Detection[] = [];
-  for (let i = 0; i < n; i++) {
+  };
+
+  // Softmax of one slot of the classifier output -> (class, probability).
+  const readSlot = (logits: Float32Array, slot: number) => {
     let best = 0;
     let max = -Infinity;
     for (let k = 0; k < nc; k++) {
-      const v = logits[i * nc + k];
+      const v = logits[slot * nc + k];
       if (v > max) { max = v; best = k; }
     }
     let sum = 0;
-    for (let k = 0; k < nc; k++) sum += Math.exp(logits[i * nc + k] - max);
-    const prob = Math.exp(logits[i * nc + best] - max) / Math.max(1e-9, sum);
-    // 45 = noise / icon / partial glyph -> reject the box entirely.
-    const detConf = dets[i].confidence;
-    if (best >= CLASSES.length || prob < 0.35) continue;
-    dets[i].cls = best;
-    dets[i].letter = CLASSES[best] ?? "?";
-    dets[i].confidence = Math.sqrt(Math.max(0, detConf * prob));
-    keep.push(dets[i]);
+    for (let k = 0; k < nc; k++) sum += Math.exp(logits[slot * nc + k] - max);
+    return { best, prob: Math.exp(logits[slot * nc + best] - max) / Math.max(1e-9, sum) };
+  };
+
+  for (let start = 0; start < dets.length; start += GROUP) {
+    const chunk = dets.slice(start, start + GROUP);
+    const data = new Float32Array(BATCH * 3 * S * S);
+    let slot = 0;
+    for (const d of chunk) {
+      for (const margin of VARIANTS) fillPatch(data, slot++, d, margin);
+    }
+    for (let s = slot; s < BATCH; s++) data.copyWithin(s * 3 * S * S, 0, 3 * S * S);
+    const tensor = new ort.Tensor("float32", data, [BATCH, 3, S, S]);
+    const out = (await clf.session.run({ [clf.inputName]: tensor }))[clf.outputName];
+    const logits = out.data as Float32Array;
+
+    for (let i = 0; i < chunk.length; i++) {
+      const det = chunk[i];
+      // Test-time augmentation: keep the sharpest non-noise reading.
+      let pickBest = -1;
+      let pickProb = -1;
+      for (let v = 0; v < VARIANTS.length; v++) {
+        const { best, prob } = readSlot(logits, i * VARIANTS.length + v);
+        if (best < CLASSES.length && prob > pickProb) {
+          pickBest = best;
+          pickProb = prob;
+        }
+      }
+      if (pickBest < 0 || pickProb < 0.35) continue;
+      const detConf = det.confidence;
+      const rescued = detConf < minConfidence;
+      // A rescued candidate needs a strong verdict and glyph-like height.
+      if (rescued && (pickProb < 0.75 || det.y1 - det.y0 < medianH * 0.6)) continue;
+      const fused = Math.sqrt(Math.max(0, det.confidence * pickProb));
+      // 45 = noise / icon / partial glyph; weak verdicts and fused scores
+      // under the user threshold are dropped.
+      if (fused < minConfidence) continue;
+      det.cls = pickBest;
+      det.letter = CLASSES[pickBest] ?? "?";
+      det.confidence = fused;
+      keep.push(det);
+    }
   }
   return keep;
 }

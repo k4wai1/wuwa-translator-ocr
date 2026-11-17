@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { analyzeCanvas, autoEnhance, type FilterMode, type FilterOptions } from "../lib/preprocess";
 import { ResetIcon, SparkIcon } from "./Icons";
+import { useI18n } from "../lib/i18n";
 
-const MODES: { id: FilterMode; label: string; hint: string }[] = [
-  { id: "original", label: "Color", hint: "Imagen original con ajustes de brillo y contraste." },
-  { id: "grayscale", label: "Gris + CLAHE", hint: "Ecualización adaptativa para texto del mismo tono." },
-  { id: "threshold", label: "Umbral", hint: "Binariza el texto rescatando bajo contraste." },
-  { id: "edges", label: "Bordes", hint: "Sobel para inscripciones grabadas en piedra." },
+const MODES: { id: FilterMode; labelKey: string; hintKey: string }[] = [
+  { id: "original", labelKey: "filters.mode.color", hintKey: "filters.mode.colorHint" },
+  { id: "grayscale", labelKey: "filters.mode.gray", hintKey: "filters.mode.grayHint" },
+  { id: "threshold", labelKey: "filters.mode.threshold", hintKey: "filters.mode.thresholdHint" },
+  { id: "edges", labelKey: "filters.mode.edges", hintKey: "filters.mode.edgesHint" },
 ];
 
 interface FilterPanelProps {
@@ -17,6 +18,7 @@ interface FilterPanelProps {
 }
 
 export function FilterPanel({ source, processed, value, onChange }: FilterPanelProps) {
+  const { t } = useI18n();
   const previewRef = useRef<HTMLCanvasElement>(null);
   const histRef = useRef<HTMLCanvasElement>(null);
   const [view, setView] = useState<"after" | "before">("after");
@@ -75,14 +77,14 @@ export function FilterPanel({ source, processed, value, onChange }: FilterPanelP
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="label">Pre-procesador adaptativo</p>
+          <p className="label">{t("filters.label")}</p>
           <p className="mt-1 text-xs text-muted">
-            Rescata texto del mismo color que el fondo antes de pasarlo al modelo.
+            {t("filters.sub")}
           </p>
         </div>
         <button type="button" className="btn btn-cyan" onClick={applyAuto}>
           <SparkIcon className="h-4 w-4" />
-          Auto-mejorar
+          {t("filters.auto")}
         </button>
       </div>
 
@@ -103,9 +105,9 @@ export function FilterPanel({ source, processed, value, onChange }: FilterPanelP
                 ? "border-gold/70 bg-gold/15 text-gold"
                 : "border-line bg-surface/40 text-muted hover:border-line-strong hover:text-ink"
             }`}
-            title={m.hint}
+            title={t(m.hintKey)}
           >
-            {m.label}
+            {t(m.labelKey)}
           </button>
         ))}
       </div>
@@ -121,7 +123,7 @@ export function FilterPanel({ source, processed, value, onChange }: FilterPanelP
                 view === v ? "bg-gold text-black" : "text-muted hover:text-ink"
               }`}
             >
-              {v === "after" ? "Procesado" : "Original"}
+              {v === "after" ? t("filters.after") : t("filters.before")}
             </button>
           ))}
         </div>
@@ -130,24 +132,24 @@ export function FilterPanel({ source, processed, value, onChange }: FilterPanelP
 
       <div className="grid gap-4 sm:grid-cols-[1.3fr_1fr]">
         <div className="space-y-3">
-          <Slider label="Brillo" value={value.brightness} min={-100} max={100} onChange={(v) => set("brightness", v)} />
-          <Slider label="Contraste" value={value.contrast} min={-100} max={100} onChange={(v) => set("contrast", v)} />
+          <Slider label={t("filters.brightness")} value={value.brightness} min={-100} max={100} onChange={(v) => set("brightness", v)} />
+          <Slider label={t("filters.contrast")} value={value.contrast} min={-100} max={100} onChange={(v) => set("contrast", v)} />
           {value.mode === "threshold" && (
             <>
               <Slider
-                label="Bloque umbral"
+                label={t("filters.block")}
                 value={value.thresholdBlock}
                 min={9}
                 max={61}
                 step={2}
                 onChange={(v) => set("thresholdBlock", v % 2 === 0 ? v + 1 : v)}
               />
-              <Slider label="Constante C" value={value.thresholdC} min={-10} max={20} onChange={(v) => set("thresholdC", v)} />
+              <Slider label={t("filters.constant")} value={value.thresholdC} min={-10} max={20} onChange={(v) => set("thresholdC", v)} />
             </>
           )}
           {value.clahe && (
             <Slider
-              label="Fuerza CLAHE"
+              label={t("filters.claheStrength")}
               value={value.claheClip}
               min={1}
               max={6}
@@ -160,15 +162,15 @@ export function FilterPanel({ source, processed, value, onChange }: FilterPanelP
 
         <div className="space-y-2">
           <div className="flex items-center justify-between rounded-md border border-line bg-surface/40 px-3 py-2">
-            <span className="text-xs text-muted">CLAHE</span>
+            <span className="text-xs text-muted">{t("filters.clahe")}</span>
             <Toggle checked={value.clahe} onChange={(v) => set("clahe", v)} />
           </div>
           <div className="flex items-center justify-between rounded-md border border-line bg-surface/40 px-3 py-2">
-            <span className="text-xs text-muted">Invertir</span>
+            <span className="text-xs text-muted">{t("filters.invert")}</span>
             <Toggle checked={value.invert} onChange={(v) => set("invert", v)} />
           </div>
           <div className="flex items-center justify-between rounded-md border border-line bg-surface/40 px-3 py-2">
-            <span className="text-xs text-muted">Enfocar</span>
+            <span className="text-xs text-muted">{t("filters.sharpen")}</span>
             <Toggle checked={value.sharpen} onChange={(v) => set("sharpen", v)} />
           </div>
           <button
@@ -186,26 +188,26 @@ export function FilterPanel({ source, processed, value, onChange }: FilterPanelP
             }
           >
             <ResetIcon className="h-3.5 w-3.5" />
-            Restablecer
+            {t("common.reset")}
           </button>
         </div>
       </div>
 
       <div className="rounded-lg border border-line bg-surface/30 p-3">
         <div className="flex items-center justify-between gap-2">
-          <p className="label">Histograma de luminancia</p>
+          <p className="label">{t("filters.histogram")}</p>
           <div className="flex gap-2 font-display text-[0.6rem] uppercase tracking-wider text-muted">
             <span>μ {stats.mean.toFixed(0)}</span>
             <span>σ {stats.std.toFixed(0)}</span>
             <span className={stats.dynamicRange < 60 ? "text-danger" : "text-ok"}>
-              rango {stats.dynamicRange}
+              {t("filters.dynRange", { value: stats.dynamicRange })}
             </span>
           </div>
         </div>
         <canvas ref={histRef} width={420} height={54} className="mt-2 h-[54px] w-full" />
         {stats.dynamicRange < 60 && (
           <p className="mt-1 text-[0.68rem] leading-relaxed text-gold/90">
-            Contraste muy bajo detectado. Prueba <strong>Umbral</strong> o pulsa Auto-mejorar.
+            {t("filters.lowContrast")}
           </p>
         )}
       </div>

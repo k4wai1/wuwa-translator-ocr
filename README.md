@@ -146,7 +146,29 @@ GitHub Actions. `vite.config.ts` usa `base: "/wuwa-translator-ocr/"` y la app us
 - **`./Otros/` está prohibido** para entrenamiento y validación (variantes cursivas:
   Lahairoi, Raguna, beta). Solo aparece en la página informativa de variantes.
 
+## Autoría y créditos
+
+Creado y desarrollado por **Luis ([@k4wai1](https://github.com/k4wai1))**.
+Proyecto **100% Open Source** bajo **licencia MIT** — código en
+[github.com/k4wai1/wuwa-translator-ocr](https://github.com/k4wai1/wuwa-translator-ocr).
+
+Tecnologías: **React 19 · TypeScript · Vite · TailwindCSS · PyTorch (SolarisCharNet +
+GlyphNet) · ONNX Runtime Web (WASM) · HTML5 Canvas**.
+
+## Internacionalización
+
+La interfaz está disponible en **10 idiomas** (inglés por defecto, español, japonés, chino
+simplificado, hindi, francés, árabe con soporte RTL, bengalí, portugués y ruso). Los
+diccionarios viven en `src/locales/*.json` y la paridad se valida automáticamente:
+
+```bash
+pnpm i18n:check   # se ejecuta solo antes de pnpm build
+```
+
+Cualquier cambio de textos debe mantener las mismas claves y placeholders en los 10
+archivos (ver `.opencode/skills/i18n-parity/SKILL.md`).
+
 ## Licencia y descargo
 
 Proyecto fan no oficial, sin afiliación con Kuro Games. *Wuthering Waves* y su tipografía
-pertenecen a sus respectivos titulares. Código bajo licencia MIT.
+pertenecen a sus respectivos titulares. Código bajo licencia MIT (ver `LICENSE`).

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CropRect } from "../lib/types";
+import { useI18n } from "../lib/i18n";
 
 type Handle = "move" | "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -138,6 +139,7 @@ export function Cropper({ src, crop, onChange, naturalWidth, naturalHeight, onRe
     return () => window.removeEventListener("keydown", onKey);
   }, [crop, onChange]);
 
+  const { t } = useI18n();
   const pxW = Math.round(crop.w * naturalWidth);
   const pxH = Math.round(crop.h * naturalHeight);
 
@@ -145,11 +147,11 @@ export function Cropper({ src, crop, onChange, naturalWidth, naturalHeight, onRe
     <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
         <span>
-          Recorte: <span className="text-ink">{pxW}</span> × <span className="text-ink">{pxH}</span> px
+          {t("cropper.crop", { w: pxW, h: pxH })}
         </span>
         <div className="flex items-center gap-2">
           <button type="button" className="text-gold hover:underline" onClick={onReset}>
-            Restablecer
+            {t("common.reset")}
           </button>
           <span className="text-line-strong">|</span>
           <button
@@ -157,7 +159,7 @@ export function Cropper({ src, crop, onChange, naturalWidth, naturalHeight, onRe
             className="text-gold hover:underline"
             onClick={() => onChange({ x: 0, y: 0, w: 1, h: 1 })}
           >
-            Toda la imagen
+            {t("cropper.all")}
           </button>
         </div>
       </div>
@@ -173,7 +175,7 @@ export function Cropper({ src, crop, onChange, naturalWidth, naturalHeight, onRe
         >
           <img
             src={src}
-            alt="Captura para recortar"
+            alt={t("cropper.imgAlt")}
             className="block h-auto max-h-[62vh] w-auto max-w-full"
             draggable={false}
           />
@@ -205,8 +207,7 @@ export function Cropper({ src, crop, onChange, naturalWidth, naturalHeight, onRe
         </div>
       </div>
       <p className="text-[0.68rem] leading-relaxed text-muted/80">
-        Arrastra los tiradores con el dedo o el ratón. En escritorio también puedes ajustar con las
-        flechas del teclado (Shift = paso grande).
+        {t("cropper.hint")}
       </p>
     </div>
   );

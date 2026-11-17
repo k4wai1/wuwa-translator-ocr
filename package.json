@@ -12,7 +12,9 @@
     "ml:dataset": "python3 scripts/generate_dataset.py",
     "ml:micro": "python3 scripts/generate_dataset.py --profile micro --out training/micro --train 1800 --val 250",
     "ml:train": "python3 scripts/train_chargen.py --epochs 30 --imgsz 192 --batch 16",
-    "ml:export": "python3 scripts/export_chargen.py"
+    "ml:export": "python3 scripts/export_chargen.py",
+    "i18n:check": "node scripts/check_i18n.mjs",
+    "prebuild": "pnpm i18n:check"
   },
   "dependencies": {
     "onnxruntime-web": "^1.23.2",

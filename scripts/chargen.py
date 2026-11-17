@@ -254,6 +254,7 @@ def decode_numpy(
     iou: float = 0.45,
     max_det: int = 300,
     stride: int = STRIDE,
+    raw_scores: bool = False,
 ):
     """Decode the raw [1, 50, H, W] ONNX output into boxes.
 
@@ -283,7 +284,7 @@ def decode_numpy(
     reg = out[1 + NUM_CLASSES : 1 + NUM_CLASSES + 4]
     cls_idx = probs[:, ys, xs].argmax(axis=0)
     cls_score = probs[cls_idx, ys, xs]
-    scores = obj[ys, xs] * cls_score
+    scores = obj[ys, xs] if raw_scores else obj[ys, xs] * cls_score
 
     dx = reg[0, ys, xs]
     dy = reg[1, ys, xs]

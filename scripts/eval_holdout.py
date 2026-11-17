@@ -36,8 +36,10 @@ def clahe_luma(bgr: np.ndarray, clip: float = 2.2) -> np.ndarray:
 
 
 def decode(output: np.ndarray, imgsz: int, conf: float, iou: float = 0.4):
+    """Permissive candidate floor + raw heatmap score, like the browser."""
     from chargen import decode_numpy
-    return decode_numpy(output, imgsz, conf=conf, iou=iou, max_det=250)
+    floor = min(conf, 0.16)
+    return decode_numpy(output, imgsz, conf=floor, iou=iou, max_det=250, raw_scores=True)
 
 
 def nms_agnostic(boxes, scores, iou_thr=0.4):
@@ -77,7 +79,12 @@ def dedupe(boxes, scores, classes):
             hk = boxes[j, 3] - boxes[j, 1]
             kx = (boxes[j, 0] + boxes[j, 2]) / 2
             ky = (boxes[j, 1] + boxes[j, 3]) / 2
-            if abs(cx - kx) < 0.35 * max(wd, wk) and abs(cy - ky) < 0.4 * max(hd, hk):
+            if abs(cx - kx) < 0.25 * max(wd, wk) and abs(cy - ky) < 0.4 * max(hd, hk):
+                dup = True
+                break
+            overlap_y = min(boxes[i, 3], boxes[j, 3]) - max(boxes[i, 1], boxes[j, 1])
+            inside = boxes[j, 0] - 0.15 * wk < cx < boxes[j, 2] + 0.15 * wk
+            if hd < 0.6 * hk and inside and overlap_y > 0.4 * min(hd, hk):
                 dup = True
                 break
         if not dup:
@@ -213,9 +220,15 @@ def run_image(path: Path, det, clf, conf: float, imgsz: int = 192):
         best = probs.argmax(1)
         conf_c = probs.max(1)
         fused = np.sqrt(np.clip(scores * conf_c, 0, 1))
+        heights = boxes[:, 3] - boxes[:, 1]
+        median_h = float(np.median(heights)) if len(heights) else 1.0
+        rescued = scores < conf
+        too_small = rescued & ((heights < median_h * 0.6) | (conf_c < 0.75))
+        fused = np.where(too_small, 0.0, fused)
         # Same rule as the browser: the classifier decides the glyph, and
-        # class 45 (noise/icon/partial) or a weak verdict drops the box.
-        keep = (scores >= 0.45) & (best < NOISE) & (conf_c >= 0.35)
+        # class 45 (noise/icon/partial), a weak verdict or a fused score under
+        # the user threshold drops the box.
+        keep = (fused >= conf) & (best < NOISE) & (conf_c >= 0.35)
         boxes, scores, classes, fused = boxes[keep], scores[keep], best[keep], fused[keep]
         scores = fused
 
@@ -240,11 +253,18 @@ def group_lines(items, space_factor=0.40):
         ln = sorted(ln, key=lambda t: t[0][0])
         ws = [b[2] - b[0] for b, _, _ in ln]
         med_w = float(np.median(ws))
+        gaps = [ln[i][0][0] - ln[i - 1][0][2] for i in range(1, len(ln))]
+        gaps = [g for g in gaps if 0 < g < med_w * 1.5]
+        med_gap = float(np.median(gaps)) if len(gaps) >= 2 else 0.0
+        # Wide tracking (title case) needs the word break to stand out from
+        # the line's own gap median, not from a fixed 0.40 * med_w.
+        tracked = med_gap > 0.35 * med_w
+        space_gap = max(med_w * space_factor, med_gap * 1.4) if tracked else med_w * space_factor
         text = ""
         prev = None
         for b, c, _ in ln:
-            if prev is not None and b[0] - prev > med_w * space_factor:
-                text += " "
+            if prev is not None and b[0] - prev > space_gap:
+                text += " " * (2 if b[0] - prev > space_gap * 2.6 else 1)
             text += CLASSES[c] if c < len(CLASSES) else "?"
             prev = b[2]
         out.append(text)

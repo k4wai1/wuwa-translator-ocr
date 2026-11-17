@@ -46,3 +46,23 @@ El hardware de entrenamiento es un Celeron sin AVX; YOLOv8n tarda ~12 s por lote
 inviable un entrenamiento completo. El modelo que se despliega es **SolarisCharNet**
 (CNN densa anchor-free, ~21 k parámetros, salida `[1, 50, 48, 48]`, stride 4). Los scripts
 YOLO permanecen como alternativa para hardware con GPU. Ver `PROGRESS_LOG.md`.
+
+## Internacionalización (10 idiomas, inglés por defecto)
+
+- La web está disponible en `en, es, ja, zh, hi, fr, ar, bn, pt, ru`; **inglés por defecto**
+  salvo que el usuario tenga otro idioma en `localStorage.getItem("wuwa-ocr-lang")`.
+- `src/locales/en.json` es la fuente de verdad (claves planas). Toda cadena visible debe
+  pasar por `t("clave")` de `src/lib/i18n.tsx`; prohibido hardcodear texto de UI.
+- Cualquier cambio de textos debe replicarse en **los 10** JSON con las mismas claves y los
+  mismos placeholders `{...}`.
+- Antes de commitear: `pnpm i18n:check` (también corre en `prebuild`), `pnpm build`,
+  revisión con MCP de navegador (inglés por defecto, cambio de idioma, RTL en árabe) y
+  `git push origin main`.
+- Skill detallada: `.opencode/skills/i18n-parity/SKILL.md`.
+
+## Créditos y licencia
+
+- Autor y desarrollador: **Luis (@k4wai1)** — https://github.com/k4wai1
+- Proyecto **100% Open Source** bajo **licencia MIT** (`LICENSE`).
+- Stack: React 19 · TypeScript · Vite · TailwindCSS · PyTorch (SolarisCharNet + GlyphNet) ·
+  ONNX Runtime Web (WASM) · HTML5 Canvas.

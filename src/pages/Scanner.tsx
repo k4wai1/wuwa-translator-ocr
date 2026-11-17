@@ -25,6 +25,7 @@ import { loadModel, runOcr, type SessionBundle } from "../lib/ocr";
 import { reconstruct } from "../lib/reconstruct";
 import type { CropRect, ModelState, OcrResult } from "../lib/types";
 import { EXAMPLE_IMAGES } from "../lib/examples";
+import { useI18n } from "../lib/i18n";
 
 const DEFAULT_CROP: CropRect = { x: 0, y: 0, w: 1, h: 1 };
 
@@ -36,13 +37,14 @@ interface Source {
 }
 
 export function Scanner() {
+  const { t } = useI18n();
   const [source, setSource] = useState<Source | null>(null);
   const sourceRef = useRef<Source | null>(null);
   const [crop, setCrop] = useState<CropRect>(DEFAULT_CROP);
   const [cropped, setCropped] = useState<HTMLCanvasElement | null>(null);
   const [filters, setFilters] = useState<FilterOptions>(DEFAULT_FILTERS);
   const deferredFilters = useDeferredValue(filters);
-  const [confidence, setConfidence] = useState(0.45);
+  const [confidence, setConfidence] = useState(0.30);
   const [upscale, setUpscale] = useState(1);
   const [periodHeuristic, setPeriodHeuristic] = useState(true);
   const [model, setModel] = useState<ModelState>({ status: "idle" });
@@ -79,7 +81,7 @@ export function Scanner() {
   const loadFile = useCallback(
     (file: File) => {
       if (!file.type.startsWith("image/")) {
-        notify("El archivo no es una imagen compatible.");
+        notify(t("scanner.toast.notImage"));
         return;
       }
       const url = URL.createObjectURL(file);
@@ -90,11 +92,11 @@ export function Scanner() {
       };
       img.onerror = () => {
         URL.revokeObjectURL(url);
-        notify("No se pudo leer la imagen.");
+        notify(t("scanner.toast.loadFailed"));
       };
       img.src = url;
     },
-    [applySource, notify],
+    [applySource, notify, t],
   );
 
   const loadUrl = useCallback(
@@ -104,10 +106,10 @@ export function Scanner() {
         try { await img.decode(); } catch { /* noop */ }
         applySource(img, url, name, false);
       };
-      img.onerror = () => notify("No se pudo cargar la imagen de ejemplo.");
+      img.onerror = () => notify(t("scanner.toast.exampleFailed"));
       img.src = url;
     },
-    [applySource, notify],
+    [applySource, notify, t],
   );
 
   useEffect(() => {
@@ -120,7 +122,7 @@ export function Scanner() {
           if (file) {
             e.preventDefault();
             loadFile(file);
-            notify("Imagen pegada desde el portapapeles.");
+            notify(t("scanner.toast.pasted"));
             return;
           }
         }
@@ -156,7 +158,7 @@ export function Scanner() {
 
   const ensureModel = useCallback(async (): Promise<SessionBundle | null> => {
     if (modelRef.current) return modelRef.current;
-    setModel({ status: "loading", progress: 0, label: "Descargando modelo ONNX…" });
+    setModel({ status: "loading", progress: 0, label: t("scanner.model.downloading") });
     try {
       const bundle = await loadModel((ratio, loaded, total) => {
         setModel({
@@ -179,7 +181,7 @@ export function Scanner() {
       }
       return null;
     }
-  }, []);
+  }, [t]);
 
   const scan = useCallback(async () => {
     if (!cropped || scanning) return;
@@ -221,7 +223,7 @@ export function Scanner() {
     if (!result) return;
     const lines = reconstruct(result.detections, {
       periodHeuristic: value,
-      spaceFactor: 0.34,
+      spaceFactor: 0.40,
       lineTolerance: 0.65,
     });
     setResult({ ...result, lines, text: lines.map((l) => l.text).join("\n") });
@@ -239,9 +241,9 @@ export function Scanner() {
           }
         }
       }
-      notify("No hay ninguna imagen en el portapapeles.");
+      notify(t("scanner.toast.clipboardEmpty"));
     } catch {
-      notify("Tu navegador bloqueó la lectura. Pulsa Ctrl+V sobre la página.");
+      notify(t("scanner.toast.clipboardBlocked"));
     }
   };
 
@@ -258,8 +260,8 @@ export function Scanner() {
   return (
     <>
       <PageMeta
-        title="WuWa Translator OCR — Solaris-3 Alphabet Decoder"
-        description="Escanea capturas de Wuthering Waves y traduce el alfabeto Solaris-3 con un modelo YOLO ONNX que corre 100% en tu navegador. WuWa Font Scanner y traductor manual."
+        title={t("scanner.metaTitle")}
+        description={t("scanner.metaDesc")}
         path="/"
       />
       <div className="mx-auto max-w-7xl px-4 pt-8 sm:px-6 sm:pt-12">
@@ -268,19 +270,19 @@ export function Scanner() {
         <div ref={toolRef} className="mt-10 scroll-mt-24 sm:mt-14">
           <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="label text-gold">Terminal de escaneo</p>
+              <p className="label text-gold">{t("scanner.tool.label")}</p>
               <h2 className="mt-1 font-display text-xl font-bold tracking-wide sm:text-2xl">
-                Captura → contraste → lectura
+                {t("scanner.tool.title")}
               </h2>
             </div>
             <span className="chip">
-              <span className="h-1.5 w-1.5 rounded-full bg-cyan" /> Procesado local
+              <span className="h-1.5 w-1.5 rounded-full bg-cyan" /> {t("scanner.tool.local")}
             </span>
           </div>
 
           <div className="grid gap-5 lg:grid-cols-[1.08fr_1fr]">
             <section className="panel p-4 sm:p-5" aria-labelledby="step-capture">
-              <StepHeading n="01" id="step-capture" title="Captura y recorte" icon={CropIcon} />
+              <StepHeading n="01" id="step-capture" title={t("scanner.capture")} icon={CropIcon} />
               {!source ? (
                 <Dropzone
                   dragging={dragging}
@@ -297,7 +299,7 @@ export function Scanner() {
                       {source.name}
                     </span>
                     <button type="button" onClick={resetImage} className="shrink-0 text-gold hover:underline">
-                      Cambiar imagen
+                      {t("scanner.change")}
                     </button>
                   </div>
                   <Cropper
@@ -309,13 +311,13 @@ export function Scanner() {
                     onReset={() => setCrop(DEFAULT_CROP)}
                   />
                   {cropBusy && (
-                    <p className="text-[0.68rem] text-cyan">Actualizando recorte…</p>
+                    <p className="text-[0.68rem] text-cyan">{t("scanner.updating")}</p>
                   )}
                 </div>
               )}
 
               <div className="mt-4 border-t border-line/70 pt-3">
-                <p className="label mb-2">O prueba con una captura real</p>
+                <p className="label mb-2">{t("scanner.examples")}</p>
                 <div className="scroll-x mt-2 flex min-w-0 gap-2 overflow-x-auto pb-1">
                   {EXAMPLE_IMAGES.filter((e) => e.tag !== "livestream")
                     .slice(0, 5)
@@ -323,18 +325,18 @@ export function Scanner() {
                       <button
                         key={ex.id}
                         type="button"
-                        onClick={() => loadUrl(ex.src, ex.title)}
+                        onClick={() => loadUrl(ex.src, t(ex.titleKey))}
                         className="group relative h-16 w-24 shrink-0 overflow-hidden rounded border border-line bg-surface-2 transition hover:border-gold/60"
-                        title={ex.title}
+                        title={t(ex.titleKey)}
                       >
                         <img
                           src={ex.src}
-                          alt={ex.title}
+                          alt={t(ex.titleKey)}
                           className="h-full w-full object-cover opacity-80 transition group-hover:opacity-100"
                           loading="lazy"
                         />
                         <span className="absolute inset-x-0 bottom-0 truncate bg-black/65 px-1 py-0.5 text-left text-[0.55rem] text-white/90">
-                          {ex.title}
+                          {t(ex.titleKey)}
                         </span>
                       </button>
                     ))}
@@ -342,25 +344,24 @@ export function Scanner() {
                     to="/manual"
                     className="grid h-16 w-24 shrink-0 place-items-center rounded border border-dashed border-line text-center text-[0.58rem] leading-tight text-muted transition hover:border-gold/60 hover:text-gold"
                   >
-                    Galería
+                    {t("scanner.gallery1")}
                     <br />
-                    completa
+                    {t("scanner.gallery2")}
                   </Link>
                 </div>
               </div>
             </section>
 
             <section className="panel p-4 sm:p-5" aria-labelledby="step-filters">
-              <StepHeading n="02" id="step-filters" title="Pre-procesado" icon={SparkIcon} />
+              <StepHeading n="02" id="step-filters" title={t("scanner.filters")} icon={SparkIcon} />
               {!cropped || !processed ? (
                 <div className="mt-4 flex min-h-[320px] flex-col items-center justify-center rounded-lg border border-dashed border-line bg-surface/20 px-6 text-center">
                   <EyeIcon className="h-8 w-8 text-line-strong" />
                   <p className="mt-3 font-display text-sm uppercase tracking-widest text-muted">
-                    Esperando imagen
+                    {t("scanner.waiting")}
                   </p>
                   <p className="mt-1 max-w-xs text-xs leading-relaxed text-muted">
-                    Sube o pega una captura para activar CLAHE, umbral adaptativo e inversión de
-                    color en tiempo real.
+                    {t("scanner.waitingBody")}
                   </p>
                 </div>
               ) : (
@@ -377,12 +378,12 @@ export function Scanner() {
           </div>
 
           <section className="panel mt-5 p-4 sm:p-5" aria-labelledby="step-infer">
-            <StepHeading n="03" id="step-infer" title="Inferencia en tu navegador" icon={ScanIcon} />
+            <StepHeading n="03" id="step-infer" title={t("scanner.infer")} icon={ScanIcon} />
             <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
               <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
                 <label className="block">
                   <span className="flex items-center justify-between text-xs">
-                    <span className="text-muted">Umbral de confianza</span>
+                    <span className="text-muted">{t("scanner.threshold")}</span>
                     <span className="font-display text-[0.72rem] tabular-nums text-ink">
                       {(confidence * 100).toFixed(0)}%
                     </span>
@@ -397,7 +398,7 @@ export function Scanner() {
                     className="mt-1 h-1.5 w-full cursor-pointer appearance-none rounded-full bg-line accent-gold"
                   />
                   <span className="mt-1 block text-[0.66rem] text-muted/80">
-                    Bájalo si faltan glifos; súbelo si aparecen cajas falsas.
+                    {t("scanner.thresholdHint")}
                   </span>
                   <label className="mt-2 flex cursor-pointer items-center gap-2 text-[0.68rem] text-muted">
                     <input
@@ -406,11 +407,11 @@ export function Scanner() {
                       onChange={(e) => setUpscale(e.target.checked ? 2 : 1)}
                       className="accent-gold"
                     />
-                    Ampliar 2× (texto pequeño)
+                    {t("scanner.upscale")}
                   </label>
                 </label>
                 <label className="flex items-center justify-between gap-3 rounded-md border border-line bg-surface/40 px-3 py-2 sm:flex-col sm:items-start sm:gap-1.5">
-                  <span className="text-xs text-muted">A / punto</span>
+                  <span className="text-xs text-muted">{t("scanner.period")}</span>
                   <button
                     type="button"
                     role="switch"
@@ -438,12 +439,12 @@ export function Scanner() {
                   {scanning ? (
                     <>
                       <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/30 border-t-black" />
-                      Leyendo glifos…
+                      {t("scanner.scanning")}
                     </>
                   ) : (
                     <>
                       <ScanIcon className="h-4 w-4" />
-                      Escanear con IA
+                      {t("scanner.scan")}
                     </>
                   )}
                 </button>
@@ -456,8 +457,8 @@ export function Scanner() {
               <div className="mt-3 flex items-start gap-2 rounded-md border border-danger/40 bg-danger/10 p-3 text-xs text-danger">
                 <AlertIcon className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>
-                  Error de inferencia: {ocrError}. Revisa la consola del navegador y que{" "}
-                  <code className="text-ink">public/models/model.onnx</code> exista.
+                  {t("scanner.error", { message: ocrError })}{" "}
+                  <code className="text-ink">public/models/model.onnx</code>
                 </span>
               </div>
             )}
@@ -465,7 +466,7 @@ export function Scanner() {
 
           <div ref={resultRef} className="mt-5 scroll-mt-24">
             {result && resultImage && (
-              <section className="panel p-4 sm:p-5" aria-label="Resultado del escaneo">
+              <section className="panel p-4 sm:p-5" aria-label={t("result.done")}>
                 <ScanResult
                   result={result}
                   imageUrl={resultImage}
@@ -514,38 +515,41 @@ export function Scanner() {
 }
 
 function Hero({ onStart }: { onStart: () => void }) {
+  const { t } = useI18n();
+  const heroBody = t("scanner.hero.body").split("Ctrl+V");
   return (
     <section className="relative grid items-center gap-8 lg:grid-cols-[1.35fr_1fr]">
       <div className="animate-fade-up">
         <div className="flex flex-wrap items-center gap-2">
           <span className="chip border-gold/40 text-gold">
-            <span className="h-1.5 w-1.5 rounded-full bg-gold" /> Solaris-3 · 45 glifos
+            <span className="h-1.5 w-1.5 rounded-full bg-gold" /> {t("scanner.hero.badge")}
           </span>
-          <span className="chip">100% client-side</span>
-          <span className="chip">ONNX Runtime Web</span>
+          <span className="chip">{t("scanner.hero.client")}</span>
+          <span className="chip">{t("scanner.hero.onnx")}</span>
         </div>
         <h1 className="mt-5 font-display text-4xl font-bold leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl">
-          Descifra el alfabeto{" "}
-          <span className="text-gold text-glow-gold">Solaris-3</span>
+          {t("scanner.hero.titleA")}{" "}
+          <span className="text-gold text-glow-gold">{t("scanner.hero.titleB")}</span>
           <br />
-          de <span className="text-cyan text-glow-cyan">Wuthering Waves</span>
+          {t("scanner.hero.titleC")}{" "}
+          <span className="font-logo text-cyan text-glow-cyan">Wuthering Waves</span>
         </h1>
         <p className="mt-4 max-w-2xl text-sm leading-relaxed text-muted sm:text-base">
-          Sube una captura, pega con <kbd className="rounded border border-line bg-surface px-1.5 py-0.5 text-[0.7rem]">Ctrl+V</kbd>{" "}
-          o usa una imagen de ejemplo. Un detector CNN ligero (ONNX) corre en tu navegador:
-          recorta, realza el contraste y obtén la transcripción sin subir nada a ningún servidor.
+          {heroBody[0]}
+          <kbd className="rounded border border-line bg-surface px-1.5 py-0.5 text-[0.7rem]">Ctrl+V</kbd>
+          {heroBody[1] ?? ""}
         </p>
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <button type="button" className="btn btn-gold h-11 px-5" onClick={onStart}>
             <ScanIcon className="h-4 w-4" />
-            Escanear una captura
+            {t("scanner.hero.cta")}
           </button>
           <Link to="/manual" className="btn btn-ghost h-11 px-5">
             <ClipboardIcon className="h-4 w-4" />
-            Traductor manual
+            {t("scanner.hero.manual")}
           </Link>
           <span className="flex items-center gap-1.5 text-[0.7rem] text-muted">
-            <CheckIcon className="h-3.5 w-3.5 text-ok" /> Sin subida de archivos
+            <CheckIcon className="h-3.5 w-3.5 text-ok" /> {t("scanner.hero.noUpload")}
           </span>
         </div>
       </div>
@@ -553,22 +557,22 @@ function Hero({ onStart }: { onStart: () => void }) {
       <div className="relative mx-auto w-full max-w-sm lg:max-w-none">
         <div className="panel panel-notch scanline overflow-hidden p-5">
           <div className="flex items-center justify-between">
-            <span className="label">Muestra de señal</span>
-            <span className="font-display text-[0.6rem] tracking-[0.3em] text-cyan">LIVE</span>
+            <span className="label">{t("scanner.hero.signal")}</span>
+            <span className="font-display text-[0.6rem] tracking-[0.3em] text-cyan">{t("scanner.hero.live")}</span>
           </div>
           <div className="mt-4 rounded border border-line/70 bg-bg/70 p-4">
             <p className="glyph break-words text-2xl leading-relaxed text-gold">
               WUTHERING WAVES
             </p>
-            <p className="mt-3 border-t border-line/60 pt-3 font-display text-[0.66rem] tracking-[0.28em] text-muted">
+            <p className="font-logo mt-3 border-t border-line/60 pt-3 text-[0.8rem] tracking-[0.2em] text-muted">
               WUTHERING WAVES
             </p>
           </div>
           <div className="mt-4 grid grid-cols-3 gap-2 text-center">
             {[
-              { k: "26", v: "letras" },
-              { k: "10", v: "dígitos" },
-              { k: "9", v: "signos" },
+              { k: "26", v: t("scanner.hero.letters") },
+              { k: "10", v: t("scanner.hero.digits") },
+              { k: "9", v: t("scanner.hero.signs") },
             ].map((s) => (
               <div key={s.v} className="rounded border border-line/60 bg-surface/40 py-2">
                 <p className="font-display text-lg font-bold text-ink">{s.k}</p>
@@ -577,8 +581,8 @@ function Hero({ onStart }: { onStart: () => void }) {
             ))}
           </div>
           <div className="mt-3 flex items-center justify-between text-[0.62rem] text-muted">
-            <span>A ↔ . comparten glifo</span>
-            <span className="text-gold">45 clases</span>
+            <span>{t("scanner.hero.shared")}</span>
+            <span className="text-gold">{t("scanner.hero.classes")}</span>
           </div>
         </div>
         <div className="absolute -bottom-3 -right-2 hidden h-16 w-16 border-r border-b border-gold/40 lg:block" />
@@ -626,7 +630,8 @@ function Dropzone({
   onPaste: () => void;
   onGallery: () => void;
   onCamera: () => void;
-}) {
+} ) {
+  const { t } = useI18n();
   return (
     <div
       className={`mt-4 rounded-lg border-2 border-dashed p-6 text-center transition ${
@@ -648,21 +653,20 @@ function Dropzone({
         <UploadIcon className="h-5 w-5" />
       </div>
       <p className="mt-3 font-display text-sm font-semibold uppercase tracking-[0.14em]">
-        Arrastra, pega o selecciona una captura
+        {t("scanner.drop.title")}
       </p>
       <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-muted">
-        PNG, JPG o WebP. En escritorio puedes pegar directamente con Ctrl+V. En móvil abre la
-        galería o dispara la cámara.
+        {t("scanner.drop.body")}
       </p>
       <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
         <button type="button" className="btn btn-gold" onClick={onGallery}>
-          <UploadIcon className="h-4 w-4" /> Subir imagen
+          <UploadIcon className="h-4 w-4" /> {t("scanner.drop.upload")}
         </button>
         <button type="button" className="btn btn-ghost" onClick={onCamera}>
-          <ScanIcon className="h-4 w-4" /> Cámara
+          <ScanIcon className="h-4 w-4" /> {t("scanner.drop.camera")}
         </button>
         <button type="button" className="btn btn-ghost" onClick={onPaste}>
-          <ClipboardIcon className="h-4 w-4" /> Pegar imagen
+          <ClipboardIcon className="h-4 w-4" /> {t("scanner.drop.paste")}
         </button>
       </div>
     </div>
@@ -670,11 +674,12 @@ function Dropzone({
 }
 
 function ModelStatus({ state, onPreload }: { state: ModelState; onPreload: () => void }) {
+  const { t } = useI18n();
   if (state.status === "loading") {
     return (
       <div className="w-full min-w-[210px] rounded border border-line bg-surface/40 px-3 py-2">
         <div className="flex items-center justify-between text-[0.62rem] text-muted">
-          <span>Cargando modelo…</span>
+          <span>{t("scanner.model.loading")}</span>
           <span>{Math.round(state.progress * 100)}%</span>
         </div>
         <div className="mt-1 h-1 overflow-hidden rounded-full bg-line">
@@ -691,7 +696,7 @@ function ModelStatus({ state, onPreload }: { state: ModelState; onPreload: () =>
     return (
       <div className="flex items-center justify-between gap-2 rounded border border-ok/30 bg-ok/10 px-3 py-2 text-[0.64rem] text-ok">
         <span className="flex items-center gap-1.5">
-          <CheckIcon className="h-3.5 w-3.5" /> Motor listo · {state.backend.toUpperCase()}
+          <CheckIcon className="h-3.5 w-3.5" /> {t("scanner.model.ready")} · {state.backend.toUpperCase()}
         </span>
         <span className="text-muted">{(state.bytes / 1_000_000).toFixed(1)} MB</span>
       </div>
@@ -700,14 +705,14 @@ function ModelStatus({ state, onPreload }: { state: ModelState; onPreload: () =>
   if (state.status === "missing") {
     return (
       <div className="rounded border border-danger/30 bg-danger/10 px-3 py-2 text-[0.64rem] text-danger">
-        Modelo ONNX no encontrado
+        {t("scanner.model.missing")}
       </div>
     );
   }
   if (state.status === "error") {
     return (
       <div className="rounded border border-danger/30 bg-danger/10 px-3 py-2 text-[0.64rem] text-danger">
-        No se pudo cargar el modelo
+        {t("scanner.model.error")}
       </div>
     );
   }
@@ -718,20 +723,21 @@ function ModelStatus({ state, onPreload }: { state: ModelState; onPreload: () =>
       className="flex items-center justify-between gap-2 rounded border border-line bg-surface/40 px-3 py-2 text-left text-[0.64rem] text-muted transition hover:border-cyan/50 hover:text-cyan"
     >
       <span className="flex items-center gap-1.5">
-        <span className="h-1.5 w-1.5 rounded-full bg-muted" /> Motor en espera
+        <span className="h-1.5 w-1.5 rounded-full bg-muted" /> {t("scanner.model.idle")}
       </span>
-      <span className="font-display tracking-wider">PRECARGAR</span>
+      <span className="font-display tracking-wider">{t("scanner.model.preload")}</span>
     </button>
   );
 }
 
 function ModelMissing() {
+  const { t } = useI18n();
   return (
     <div className="mt-3 rounded-md border border-gold/40 bg-gold/10 p-3 text-xs leading-relaxed text-ink">
-      <p className="font-semibold text-gold">Falta el modelo entrenado</p>
+      <p className="font-semibold text-gold">{t("scanner.missing.title")}</p>
       <p className="mt-1 text-muted">
-        Este despliegue no incluye <code className="text-ink">public/models/model.onnx</code>.
-        Entrena el detector y cópialo:
+        {t("scanner.missing.body")}{" "}
+        <code className="text-ink">public/models/model.onnx</code>
       </p>
       <pre className="mt-2 overflow-x-auto rounded bg-bg/70 p-2 text-[0.68rem] text-cyan">
 {`python scripts/generate_dataset.py --profile micro --out training/micro
@@ -743,27 +749,28 @@ python scripts/export_chargen.py`}
 }
 
 function HowItWorks() {
+  const { t } = useI18n();
   const steps = [
     {
       icon: CropIcon,
-      title: "Recorta el texto",
-      body: "Ajusta el recuadro sobre la línea o el letrero. Un recorte limpio mejora muchísimo la detección de glifos pequeños.",
+      title: t("scanner.how.1t"),
+      body: t("scanner.how.1b"),
     },
     {
       icon: SparkIcon,
-      title: "Realza el contraste",
-      body: "CLAHE, umbral adaptativo e inversión recuperan inscripciones del mismo color que el fondo o con brillos del juego.",
+      title: t("scanner.how.2t"),
+      body: t("scanner.how.2b"),
     },
     {
       icon: ScanIcon,
-      title: "Lee y copia",
-      body: "El detector agrupa por líneas, ordena de izquierda a derecha e inserta espacios. Copia el texto o descárgalo en .txt.",
+      title: t("scanner.how.3t"),
+      body: t("scanner.how.3b"),
     },
   ];
   return (
     <section className="mt-16">
-      <p className="label text-gold">Protocolo</p>
-      <h2 className="mt-1 font-display text-2xl font-bold tracking-wide">Cómo funciona</h2>
+      <p className="label text-gold">{t("scanner.how.label")}</p>
+      <h2 className="mt-1 font-display text-2xl font-bold tracking-wide">{t("scanner.how.title")}</h2>
       <div className="mt-5 grid gap-4 md:grid-cols-3">
         {steps.map((s, i) => (
           <article key={s.title} className="panel p-5">
@@ -783,29 +790,30 @@ function HowItWorks() {
 }
 
 function Faq() {
+  const { t } = useI18n();
   const faqs = [
     {
-      q: "¿Qué es el alfabeto Solaris-3 de Wuthering Waves?",
-      a: "Es el sistema de escritura ficticio que Kuro Games usa en carteles, menús y paneles de Wuthering Waves. Se basa en una sustitución del alfabeto latino: cada letra inglesa se dibuja con un glifo distinto, por lo que puede traducirse letra a letra.",
+      q: t("scanner.faq.1q"),
+      a: t("scanner.faq.1a"),
     },
     {
-      q: "¿Por qué el punto y la letra A son la misma clase?",
-      a: "La fuente oficial dibuja 'A', 'a' y '.' con exactamente el mismo contorno. Entrenar dos clases visualmente idénticas haría que la red fallara. El detector usa una sola clase y el post-procesado decide si es punto cuando el glifo aparece aislado al final de una palabra o frase.",
+      q: t("scanner.faq.2q"),
+      a: t("scanner.faq.2a"),
     },
     {
-      q: "¿Se suben mis capturas a un servidor?",
-      a: "No. El modelo ONNX se descarga una vez y se ejecuta con ONNX Runtime Web (WASM) dentro de tu navegador. El recorte, el pre-procesado y la inferencia ocurren en tu dispositivo.",
+      q: t("scanner.faq.3q"),
+      a: t("scanner.faq.3a"),
     },
     {
-      q: "¿Funciona con letras minúsculas?",
-      a: "Sí, de forma implícita. En Solaris-3 Script las minúsculas comparten el mismo glifo que las mayúsculas, así que las 26 clases A-Z cubren ambos casos. La transcripción se muestra en mayúsculas.",
+      q: t("scanner.faq.4q"),
+      a: t("scanner.faq.4a"),
     },
   ];
   return (
     <section className="mt-16">
-      <p className="label text-gold">Archivo de resonancia</p>
+      <p className="label text-gold">{t("scanner.faq.label")}</p>
       <h2 className="mt-1 font-display text-2xl font-bold tracking-wide">
-        Preguntas frecuentes del OCR
+        {t("scanner.faq.title")}
       </h2>
       <div className="mt-5 grid gap-3 md:grid-cols-2">
         {faqs.map((f) => (

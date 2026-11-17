@@ -8,6 +8,20 @@
   font-display: swap;
 }
 
+/* Official in-game UI typeface (Latin subset, spaces repaired). */
+@font-face {
+  font-family: "WuWa-UI";
+  src: url("/fonts/font_reparada_v3.ttf") format("truetype");
+  font-display: swap;
+}
+
+/* Wuthering Waves logotype. */
+@font-face {
+  font-family: "WuWa-Logo";
+  src: url("/fonts/WutheringWaves-Regular.otf") format("opentype");
+  font-display: swap;
+}
+
 :root {
   --bg: #f4f3ef;
   --bg-deep: #e9e7df;
@@ -61,8 +75,9 @@
   --color-cyan-soft: var(--cyan-soft);
   --color-danger: var(--danger);
   --color-ok: var(--ok);
-  --font-display: "Chakra Petch", "Rajdhani", ui-sans-serif, system-ui, sans-serif;
-  --font-body: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "WuWa-UI", "Chakra Petch", "Rajdhani", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "WuWa-UI", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-logo: "WuWa-Logo", "WuWa-UI", "Chakra Petch", ui-sans-serif, sans-serif;
   --font-solaris: "Solaris-3", "Noto Sans", ui-sans-serif, sans-serif;
 }
 
@@ -233,6 +248,12 @@
     border-color: color-mix(in srgb, var(--cyan) 60%, transparent);
     outline: none;
   }
+  .font-logo {
+    font-family: var(--font-logo);
+    letter-spacing: 0.04em;
+    font-weight: 400;
+  }
+
   .glyph {
     font-family: var(--font-solaris);
     font-feature-settings: normal;

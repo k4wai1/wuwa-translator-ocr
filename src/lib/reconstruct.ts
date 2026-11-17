@@ -40,9 +40,21 @@ export function dedupeDetections(detections: Detection[]): Detection[] {
       const hk = Math.max(1, k.y1 - k.y0);
       const cy = (d.y0 + d.y1) / 2;
       const ky = (k.y0 + k.y1) / 2;
-      const closeX = Math.abs(cx - kx) < 0.35 * Math.max(wd, wk);
+      const closeX = Math.abs(cx - kx) < 0.25 * Math.max(wd, wk);
       const closeY = Math.abs(cy - ky) < 0.4 * Math.max(hd, hk);
       if (closeX && closeY) { dup = true; break; }
+      // A short box sitting inside a taller glyph's span is a stroke fragment
+      // (the detector loves reading those as commas between letters).
+      const overlapY = Math.min(d.y1, k.y1) - Math.max(d.y0, k.y0);
+      const inside = cx > k.x0 - 0.15 * wk && cx < k.x1 + 0.15 * wk;
+      if (hd < 0.6 * hk && inside && overlapY > 0.4 * Math.min(hd, hk)) { dup = true; break; }
+      // Two boxes of the same class over the same strokes (split glyphs like
+      // "I" produce one full box plus one for the upper bar).
+      const overlapX = Math.min(d.x1, k.x1) - Math.max(d.x0, k.x0);
+      if (d.cls === k.cls && overlapX > 0.5 * Math.min(wd, wk) && overlapY > 0.5 * Math.min(hd, hk)) {
+        dup = true;
+        break;
+      }
     }
     if (!dup) keep.push(d);
   }
@@ -90,7 +102,21 @@ export function reconstruct(rawDetections: Detection[], opts: ReconstructOptions
   for (const line of lines) {
     const items = [...line.items].sort((a, b) => a.x0 - b.x0);
     const medW = median(items.map((d) => d.x1 - d.x0)) || line.height;
-    const spaceGap = medW * opts.spaceFactor;
+    // Titles with wide tracking ("N E W") have every inter-letter gap above
+    // 0.40 * medW. When that happens, a real word break has to stand out from
+    // the line's own gap median instead of from a fixed threshold.
+    const gaps: number[] = [];
+    for (let i = 1; i < items.length; i++) {
+      const g = items[i].x0 - items[i - 1].x1;
+      // Ignore jumps between separate labels on the same visual row: they are
+      // not letter tracking and would skew the median.
+      if (g > 0 && g < medW * 1.5) gaps.push(g);
+    }
+    const medGap = gaps.length >= 2 ? median(gaps) : 0;
+    const tracked = medGap > 0.35 * medW;
+    const spaceGap = tracked
+      ? Math.max(medW * opts.spaceFactor, medGap * 1.4)
+      : medW * opts.spaceFactor;
 
     const chars: string[] = [];
     for (let i = 0; i < items.length; i++) {
